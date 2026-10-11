@@ -1,0 +1,40 @@
+# Godot 4 generated cache and import files
+.godot/
+.import/
+*.translation
+*.import
+# World 1 atlases: VRAM compression, mipmaps and size limits must reach CI
+# (DESIGN 4b / 11, QA 2026-10-10 finding 5).
+!assets/models/*/textures/*.png.import
+
+# Mock sources that stay on disk only
+docs/mockups/src/*.blend
+docs/mockups/src/*_raw.png
+docs/mockups/src/*.blend1
+
+# Tool caches
+.ruff_cache/
+__pycache__/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+build/
+
+# Godot Gradle source template (installed in CI from export templates)
+android/build/
+android/.build_version
+
+# Local screenshots from the capture bot
+screenshots/raw/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+docs/mockups/src/__pycache__/

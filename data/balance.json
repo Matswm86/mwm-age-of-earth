@@ -1,0 +1,938 @@
+{
+  "_doc": "Age of Earth v1 balance. The ONE source of numbers for the game and tools/balance_sim.py. Units: metres, seconds, resource units. GDD section 6 explains every block.",
+  "version": 1,
+  "match": {
+    "start_resources": {
+      "food": 250,
+      "wood": 250,
+      "stone": 150,
+      "ochre": 0
+    },
+    "start_units": {
+      "forager": 6
+    },
+    "start_buildings": [
+      "home_tree"
+    ],
+    "pop_cap_max": 75,
+    "carcass_spawn_every_s": 150,
+    "carcass_food": 150,
+    "carcass_decay_per_s": 0.25,
+    "defeat_scatter_delay_s": 30,
+    "game_speeds": [
+      1.0,
+      1.5
+    ]
+  },
+  "gather": {
+    "_doc": "rate = units per second while working; carry = units per trip; drop_s = time at the drop site",
+    "carry": 10,
+    "drop_s": 1.0,
+    "rates": {
+      "fruit": 0.4,
+      "tuber": 0.33,
+      "carcass": 0.5,
+      "game": 0.45,
+      "fish_weir": 0.3,
+      "wood": 0.38,
+      "stone": 0.3,
+      "ochre": 0.28
+    },
+    "need_tech": {
+      "game": "age_2",
+      "ochre": "age_2",
+      "fish_weir": "age_3"
+    }
+  },
+  "map_resources_per_player": {
+    "_doc": "Ordered by distance from the Home Tree. dist_m = one-way walk to the nearest drop site; dist_cache_m = after a Cache is built beside it. amount -1 = renewable. slots = foragers that can work it at once (fish_weir: 1 per weir built).",
+    "food": [
+      {
+        "kind": "fruit",
+        "amount": 600,
+        "dist_m": 12,
+        "dist_cache_m": 12,
+        "note": "6 fig trees x 100 around the Home Tree, regrow 0.05/s each up to 100",
+        "slots": 6
+      },
+      {
+        "kind": "tuber",
+        "amount": 500,
+        "dist_m": 45,
+        "dist_cache_m": 10,
+        "note": "2 patches x 250",
+        "slots": 6
+      },
+      {
+        "kind": "carcass",
+        "amount": 300,
+        "dist_m": 60,
+        "dist_cache_m": 14,
+        "note": "2 starting predator kills x 150; more spawn, contested",
+        "slots": 4
+      },
+      {
+        "kind": "game",
+        "amount": 640,
+        "dist_m": 70,
+        "dist_cache_m": 14,
+        "note": "1 antelope herd x 8 x 80, huntable from age 2",
+        "slots": 6
+      },
+      {
+        "kind": "fruit",
+        "amount": 800,
+        "dist_m": 110,
+        "dist_cache_m": 14,
+        "note": "far fig grove, shared middle of map",
+        "slots": 8
+      },
+      {
+        "kind": "game",
+        "amount": 640,
+        "dist_m": 120,
+        "dist_cache_m": 16,
+        "note": "2nd herd, from age 2",
+        "slots": 6
+      },
+      {
+        "kind": "fish_weir",
+        "amount": -1,
+        "dist_m": 12,
+        "dist_cache_m": 12,
+        "note": "age 3, renewable, 1 forager per weir",
+        "slots": 0
+      }
+    ],
+    "wood": [
+      {
+        "kind": "wood",
+        "amount": 6000,
+        "dist_m": 30,
+        "dist_cache_m": 8,
+        "slots": 99
+      }
+    ],
+    "stone": [
+      {
+        "kind": "stone",
+        "amount": 1800,
+        "dist_m": 55,
+        "dist_cache_m": 8,
+        "slots": 99
+      }
+    ],
+    "ochre": [
+      {
+        "kind": "ochre",
+        "amount": 900,
+        "dist_m": 90,
+        "dist_cache_m": 10,
+        "slots": 99
+      }
+    ]
+  },
+  "fruit_regrow_per_s_per_tree": 0.05,
+  "units": {
+    "_doc": "class drives the counter table. atk = damage per hit, rof_s = seconds between hits, range_m 0 = melee (1.2 m reach). armour = [melee, ranged] flat reduction, min damage 1.",
+    "forager": {
+      "age": 1,
+      "class": "worker",
+      "cost": {
+        "food": 50
+      },
+      "train_s": 20,
+      "pop": 1,
+      "hp": 30,
+      "atk": 2,
+      "rof_s": 2.0,
+      "range_m": 0,
+      "armour": [
+        0,
+        0
+      ],
+      "speed": 3.2,
+      "from": "home_tree"
+    },
+    "bruiser": {
+      "age": 1,
+      "class": "heavy",
+      "cost": {
+        "food": 60,
+        "wood": 20
+      },
+      "train_s": 24,
+      "pop": 1,
+      "hp": 70,
+      "atk": 6,
+      "rof_s": 2.0,
+      "range_m": 0,
+      "armour": [
+        1,
+        0
+      ],
+      "speed": 3.0,
+      "from": "display_ground"
+    },
+    "stone_thrower": {
+      "age": 1,
+      "class": "ranged",
+      "cost": {
+        "food": 35,
+        "stone": 35
+      },
+      "train_s": 26,
+      "pop": 1,
+      "hp": 30,
+      "atk": 4,
+      "rof_s": 2.0,
+      "range_m": 16,
+      "armour": [
+        0,
+        0
+      ],
+      "speed": 3.0,
+      "from": "throwing_ground"
+    },
+    "spear_bearer": {
+      "age": 2,
+      "class": "spear",
+      "cost": {
+        "food": 35,
+        "wood": 25
+      },
+      "train_s": 22,
+      "pop": 1,
+      "hp": 45,
+      "atk": 5,
+      "rof_s": 2.0,
+      "range_m": 0,
+      "armour": [
+        0,
+        0
+      ],
+      "speed": 3.2,
+      "from": "display_ground"
+    },
+    "runner": {
+      "age": 2,
+      "class": "fast",
+      "cost": {
+        "food": 80,
+        "stone": 20
+      },
+      "train_s": 28,
+      "pop": 1,
+      "hp": 55,
+      "atk": 5,
+      "rof_s": 1.8,
+      "range_m": 0,
+      "armour": [
+        0,
+        1
+      ],
+      "speed": 5.2,
+      "from": "display_ground"
+    },
+    "torch_bearer": {
+      "age": 2,
+      "class": "torch",
+      "cost": {
+        "food": 40,
+        "wood": 60
+      },
+      "train_s": 30,
+      "pop": 1,
+      "hp": 40,
+      "atk": 2,
+      "rof_s": 2.0,
+      "range_m": 0,
+      "armour": [
+        0,
+        0
+      ],
+      "speed": 3.0,
+      "from": "home_tree",
+      "building_atk": 18,
+      "building_rof_s": 3.0,
+      "burn_dps": 2,
+      "burn_s": 10,
+      "predator_repel_m": 12
+    },
+    "envoy": {
+      "age": 3,
+      "class": "support",
+      "cost": {
+        "food": 80,
+        "ochre": 60
+      },
+      "train_s": 40,
+      "pop": 1,
+      "hp": 30,
+      "atk": 0,
+      "rof_s": 0,
+      "range_m": 0,
+      "armour": [
+        0,
+        0
+      ],
+      "speed": 2.8,
+      "from": "story_circle",
+      "heal_hp_per_s": 1.5,
+      "heal_range_m": 8,
+      "persuade_range_m": 20,
+      "persuade_s": 8,
+      "persuade_recharge_s": 45
+    }
+  },
+  "counters": {
+    "_doc": "Damage multiplier attacker_class -> target_class. Missing pair = 1.0. Applied before armour.",
+    "heavy": {
+      "spear": 1.5,
+      "torch": 1.5,
+      "building": 1.5
+    },
+    "ranged": {
+      "heavy": 2.0,
+      "spear": 1.75,
+      "fast": 0.6
+    },
+    "spear": {
+      "fast": 2.5,
+      "predator": 2.0
+    },
+    "fast": {
+      "ranged": 2.0,
+      "worker": 1.5,
+      "torch": 2.0,
+      "support": 2.0,
+      "heavy": 0.7
+    },
+    "torch": {
+      "predator": 1.5
+    },
+    "worker": {
+      "predator": 1.0
+    }
+  },
+  "line_upgrades": {
+    "_doc": "Researched at the building that trains the line. delta is added to the unit stats.",
+    "heavy_clubs": {
+      "age": 2,
+      "at": "display_ground",
+      "cost": {
+        "food": 150,
+        "wood": 100
+      },
+      "time_s": 40,
+      "unit": "bruiser",
+      "delta": {
+        "atk": 2,
+        "hp": 15
+      },
+      "name_after": "Club-bearer"
+    },
+    "practiced_fighters": {
+      "age": 3,
+      "at": "display_ground",
+      "cost": {
+        "food": 250,
+        "ochre": 100
+      },
+      "time_s": 55,
+      "unit": "bruiser",
+      "delta": {
+        "atk": 2,
+        "armour": [
+          1,
+          1
+        ]
+      },
+      "name_after": "Band Fighter"
+    },
+    "shaped_stones": {
+      "age": 2,
+      "at": "throwing_ground",
+      "cost": {
+        "food": 120,
+        "stone": 80
+      },
+      "time_s": 40,
+      "unit": "stone_thrower",
+      "delta": {
+        "atk": 1,
+        "range_m": 2
+      }
+    },
+    "throwing_spears": {
+      "age": 3,
+      "at": "throwing_ground",
+      "cost": {
+        "food": 250,
+        "wood": 150
+      },
+      "time_s": 55,
+      "unit": "stone_thrower",
+      "delta": {
+        "atk": 3,
+        "range_m": 3,
+        "hp": 10
+      },
+      "name_after": "Spear Caster",
+      "new_cost": {
+        "food": 35,
+        "wood": 40
+      }
+    },
+    "hafted_points": {
+      "age": 3,
+      "at": "display_ground",
+      "cost": {
+        "food": 200,
+        "stone": 100
+      },
+      "time_s": 50,
+      "unit": "spear_bearer",
+      "delta": {
+        "atk": 2,
+        "hp": 10
+      }
+    },
+    "long_runners": {
+      "age": 3,
+      "at": "display_ground",
+      "cost": {
+        "food": 200,
+        "ochre": 50
+      },
+      "time_s": 50,
+      "unit": "runner",
+      "delta": {
+        "hp": 10,
+        "speed": 0.4
+      }
+    },
+    "fire_carriers": {
+      "age": 3,
+      "at": "home_tree",
+      "cost": {
+        "food": 150,
+        "wood": 150
+      },
+      "time_s": 45,
+      "unit": "torch_bearer",
+      "delta": {
+        "building_atk": 9
+      }
+    }
+  },
+  "techs": {
+    "_doc": "Age-ups and economy techs. requires = techs or building counts.",
+    "stone_that_cuts": {
+      "age": 1,
+      "at": "knapping_floor",
+      "cost": {
+        "food": 100,
+        "stone": 75
+      },
+      "time_s": 40,
+      "effect": {
+        "gather_mult": {
+          "carcass": 1.25,
+          "game": 1.25,
+          "tuber": 1.1
+        },
+        "atk_melee": 1
+      }
+    },
+    "age_2_fire": {
+      "age": 1,
+      "at": "home_tree",
+      "cost": {
+        "food": 350,
+        "wood": 100,
+        "stone": 50
+      },
+      "time_s": 90,
+      "requires": {
+        "tech": [
+          "stone_that_cuts"
+        ],
+        "age1_buildings": 2
+      }
+    },
+    "age_3_words": {
+      "age": 2,
+      "at": "home_tree",
+      "cost": {
+        "food": 450,
+        "wood": 100,
+        "ochre": 100
+      },
+      "time_s": 100,
+      "requires": {
+        "age2_buildings": 2
+      }
+    },
+    "digging_sticks": {
+      "age": 1,
+      "at": "knapping_floor",
+      "cost": {
+        "food": 50,
+        "wood": 50
+      },
+      "time_s": 25,
+      "effect": {
+        "gather_mult": {
+          "tuber": 1.25
+        }
+      }
+    },
+    "carry_slings": {
+      "age": 2,
+      "at": "home_tree",
+      "cost": {
+        "food": 125,
+        "wood": 75
+      },
+      "time_s": 30,
+      "effect": {
+        "carry_add": 4
+      }
+    },
+    "cooking": {
+      "age": 2,
+      "at": "home_tree",
+      "cost": {
+        "food": 150,
+        "wood": 100
+      },
+      "time_s": 45,
+      "effect": {
+        "gather_mult": {
+          "tuber": 1.2,
+          "game": 1.15,
+          "carcass": 1.15
+        }
+      }
+    },
+    "handaxe": {
+      "age": 2,
+      "at": "knapping_floor",
+      "cost": {
+        "food": 100,
+        "stone": 100
+      },
+      "time_s": 40,
+      "effect": {
+        "gather_mult": {
+          "wood": 1.2,
+          "game": 1.1
+        },
+        "atk_melee": 1
+      }
+    },
+    "heat_treated_stone": {
+      "age": 3,
+      "at": "knapping_floor",
+      "cost": {
+        "food": 150,
+        "wood": 150
+      },
+      "time_s": 45,
+      "effect": {
+        "gather_mult": {
+          "stone": 1.25
+        },
+        "atk_ranged": 1
+      }
+    },
+    "shared_names": {
+      "age": 3,
+      "at": "story_circle",
+      "cost": {
+        "food": 200,
+        "ochre": 100
+      },
+      "time_s": 50,
+      "effect": {
+        "forager_hp_add": 15,
+        "train_s_mult": 0.85
+      }
+    },
+    "gift_beads": {
+      "age": 3,
+      "at": "story_circle",
+      "cost": {
+        "food": 150,
+        "ochre": 150
+      },
+      "time_s": 50,
+      "effect": {
+        "persuade_s_mult": 0.75,
+        "persuade_range_add": 4
+      }
+    }
+  },
+  "buildings": {
+    "_doc": "pop = housing given. drop = resources accepted. garrison = units that fit. age2_form: home_tree and nest_grove restyle automatically (free) when the owner reaches Age 2; lookout_tree -> watch_fire is a paid in-place upgrade (watch_fire cost). counts_as_ageN = counts toward the next age-up requirement.",
+    "home_tree": {
+      "age": 1,
+      "cost": {
+        "wood": 275,
+        "stone": 100
+      },
+      "build_s": 120,
+      "hp": 1800,
+      "pop": 5,
+      "drop": [
+        "food",
+        "wood",
+        "stone",
+        "ochre"
+      ],
+      "garrison": 10,
+      "vision_m": 32,
+      "shoot": {
+        "atk": 3,
+        "rof_s": 2.0,
+        "range_m": 16,
+        "base_shots": 1,
+        "per_garrison": 0.5
+      },
+      "age2_form": "home_hearth"
+    },
+    "home_hearth": {
+      "age": 2,
+      "hp": 2400,
+      "pop": 5,
+      "fire_radius_m": 20
+    },
+    "hearth_camp": {
+      "age": 2,
+      "cost": {
+        "wood": 275,
+        "stone": 100
+      },
+      "build_s": 120,
+      "hp": 1600,
+      "pop": 5,
+      "drop": [
+        "food",
+        "wood",
+        "stone",
+        "ochre"
+      ],
+      "garrison": 10,
+      "fire_radius_m": 16,
+      "counts_as_age2": true
+    },
+    "nest_grove": {
+      "age": 1,
+      "cost": {
+        "wood": 30
+      },
+      "build_s": 20,
+      "hp": 250,
+      "pop": 5,
+      "age2_form": "windbreak"
+    },
+    "windbreak": {
+      "age": 2,
+      "cost": {
+        "wood": 30
+      },
+      "build_s": 20,
+      "hp": 300,
+      "pop": 5
+    },
+    "cache": {
+      "age": 1,
+      "cost": {
+        "wood": 60
+      },
+      "build_s": 25,
+      "hp": 400,
+      "drop": [
+        "food",
+        "wood",
+        "stone",
+        "ochre"
+      ]
+    },
+    "display_ground": {
+      "age": 1,
+      "cost": {
+        "wood": 150
+      },
+      "build_s": 40,
+      "hp": 900,
+      "counts_as_age1": true
+    },
+    "throwing_ground": {
+      "age": 1,
+      "cost": {
+        "wood": 150,
+        "stone": 25
+      },
+      "build_s": 40,
+      "hp": 900,
+      "counts_as_age1": true
+    },
+    "knapping_floor": {
+      "age": 1,
+      "cost": {
+        "wood": 100,
+        "stone": 50
+      },
+      "build_s": 40,
+      "hp": 800,
+      "counts_as_age1": true
+    },
+    "lookout_tree": {
+      "age": 1,
+      "cost": {
+        "wood": 40,
+        "stone": 60
+      },
+      "build_s": 45,
+      "hp": 500,
+      "garrison": 3,
+      "vision_m": 30,
+      "shoot": {
+        "atk": 4,
+        "rof_s": 2.0,
+        "range_m": 18,
+        "base_shots": 0,
+        "per_garrison": 1.0
+      },
+      "age2_form": "watch_fire"
+    },
+    "watch_fire": {
+      "age": 2,
+      "cost": {
+        "wood": 75,
+        "stone": 75
+      },
+      "build_s": 45,
+      "hp": 700,
+      "garrison": 3,
+      "vision_m": 34,
+      "fire_radius_m": 25,
+      "shoot": {
+        "atk": 4,
+        "rof_s": 2.0,
+        "range_m": 20,
+        "base_shots": 1,
+        "per_garrison": 1.0
+      },
+      "counts_as_age2": true
+    },
+    "thorn_fence": {
+      "age": 1,
+      "cost": {
+        "wood": 5
+      },
+      "build_s": 6,
+      "hp": 250,
+      "segment_m": 4,
+      "torch_mult": 3.0
+    },
+    "ochre_cache": {
+      "age": 2,
+      "cost": {
+        "wood": 60
+      },
+      "build_s": 25,
+      "hp": 400,
+      "drop": [
+        "ochre",
+        "stone"
+      ],
+      "counts_as_age2": true
+    },
+    "story_circle": {
+      "age": 3,
+      "cost": {
+        "wood": 175,
+        "stone": 100
+      },
+      "build_s": 60,
+      "hp": 1000
+    },
+    "fish_weir": {
+      "age": 3,
+      "cost": {
+        "wood": 60
+      },
+      "build_s": 20,
+      "hp": 150,
+      "food_per_build": 300,
+      "rebuild_cost": {
+        "wood": 40
+      }
+    }
+  },
+  "predators": {
+    "big_cat": {
+      "hp": 90,
+      "atk": 9,
+      "rof_s": 1.5,
+      "speed": 6.0,
+      "count_per_map": 2,
+      "hunts_alone_m": 12,
+      "food_on_death": 0
+    },
+    "hyena": {
+      "hp": 45,
+      "atk": 5,
+      "rof_s": 1.2,
+      "speed": 5.5,
+      "packs_per_map": 2,
+      "pack_size": 3,
+      "attacks_groups_up_to": 2,
+      "steals_carcass": true
+    },
+    "crocodile": {
+      "hp": 150,
+      "atk": 14,
+      "rof_s": 2.5,
+      "speed": 1.5,
+      "count_per_map": 3,
+      "shore_only": true
+    },
+    "fear_fire_radius_mult": 1.0
+  },
+  "ai_profiles": {
+    "_doc": "Same rules and income as the player; difficulty changes decisions, never resources. reaction_s = delay before the AI answers an attack or a scouted army. army_frac = share of income to the army wallet by age [age1 after minute 4, age2, age3]. gather_split = share of foragers on food/wood/stone/ochre per age (build-order script).",
+    "easy": {
+      "forager_target": [
+        13,
+        20,
+        24
+      ],
+      "uses_caches": false,
+      "idle_frac": 0.12,
+      "age2_click_min": 7.5,
+      "age3_click_min": 15.0,
+      "first_attack_min": 13.0,
+      "wave_size": 6,
+      "counter_pick": false,
+      "micro": false,
+      "reaction_s": 25,
+      "raids_foragers": false,
+      "max_army": 20,
+      "army_frac": [
+        0.1,
+        0.25,
+        0.4
+      ],
+      "gather_split": [
+        {
+          "food": 0.55,
+          "wood": 0.35,
+          "stone": 0.1,
+          "ochre": 0.0
+        },
+        {
+          "food": 0.42,
+          "wood": 0.3,
+          "stone": 0.12,
+          "ochre": 0.16
+        },
+        {
+          "food": 0.45,
+          "wood": 0.3,
+          "stone": 0.1,
+          "ochre": 0.15
+        }
+      ]
+    },
+    "normal": {
+      "forager_target": [
+        16,
+        26,
+        32
+      ],
+      "uses_caches": true,
+      "idle_frac": 0.05,
+      "age2_click_min": 0,
+      "age3_click_min": 0,
+      "first_attack_min": 10.0,
+      "wave_size": 10,
+      "counter_pick": true,
+      "micro": false,
+      "reaction_s": 10,
+      "raids_foragers": false,
+      "max_army": 40,
+      "army_frac": [
+        0.12,
+        0.2,
+        0.5
+      ],
+      "gather_split": [
+        {
+          "food": 0.55,
+          "wood": 0.35,
+          "stone": 0.1,
+          "ochre": 0.0
+        },
+        {
+          "food": 0.42,
+          "wood": 0.3,
+          "stone": 0.12,
+          "ochre": 0.16
+        },
+        {
+          "food": 0.45,
+          "wood": 0.3,
+          "stone": 0.1,
+          "ochre": 0.15
+        }
+      ]
+    },
+    "hard": {
+      "forager_target": [
+        16,
+        28,
+        34
+      ],
+      "uses_caches": true,
+      "idle_frac": 0.02,
+      "age2_click_min": 0,
+      "age3_click_min": 0,
+      "first_attack_min": 8.0,
+      "wave_size": 12,
+      "counter_pick": true,
+      "micro": true,
+      "reaction_s": 4,
+      "raids_foragers": true,
+      "max_army": 45,
+      "army_frac": [
+        0.12,
+        0.22,
+        0.55
+      ],
+      "gather_split": [
+        {
+          "food": 0.55,
+          "wood": 0.35,
+          "stone": 0.1,
+          "ochre": 0.0
+        },
+        {
+          "food": 0.42,
+          "wood": 0.3,
+          "stone": 0.12,
+          "ochre": 0.16
+        },
+        {
+          "food": 0.45,
+          "wood": 0.3,
+          "stone": 0.1,
+          "ochre": 0.15
+        }
+      ]
+    }
+  }
+}
