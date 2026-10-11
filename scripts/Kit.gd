@@ -6,6 +6,9 @@ extends RefCounted
 ## caller places it. `ground` (Callable(x, z) -> height) lets props sit on the real slope.
 
 const BASALT := Color(0.42, 0.38, 0.35)
+## Sleeping-nest grade: the heap scan's leaves pulled toward dry, wilted brown so the nests read
+## against the live canopy.
+const NEST_TINT := Color(0.62, 0.46, 0.28)
 
 
 static func _put(
@@ -19,17 +22,51 @@ static func _put(
 	return n
 
 
-## Home Tree (Age 1): the fig with three branch sleeping nests in the crown fork.
+## Home Tree (Age 1): a broad Melia crown with three leafy sleeping nests in its forks.
 static func home_tree() -> Node3D:
 	var r := Node3D.new()
 	r.name = "HomeTree"
-	_put(r, "home_fig", Vector3.ZERO, 0.4, 1.0)
-	var nests: Array[Vector3] = [
-		Vector3(1.6, 7.2, 0.6), Vector3(-1.4, 8.1, -1.0), Vector3(0.3, 9.0, 1.9)
+	var yaw: float = 0.4
+	var sc: float = GameConfig.HOME_TREE_SCALE
+	_put(r, GameConfig.HOME_TREE_MODEL, Vector3.ZERO, yaw, sc)
+	# nests sit in the outer canopy on the south (camera) side like chimp nests: on the crown's
+	# leaf surface (the top leaf height over each spot, measured on the model, y up, metres) above
+	# outer forks; anything deeper is hidden by the leaves from every RTS angle (2026-10-11)
+	var forks: Array[Vector3] = [
+		Vector3(2.6, 6.55, 0.5), Vector3(1.0, 6.35, 1.95), Vector3(-1.0, 6.5, 2.0)
 	]
-	for k in nests.size():
-		_put(r, "branch_heap", nests[k], k * 2.1, 0.75, {"shadow": true})
+	var b := Basis(Vector3.UP, yaw).scaled(Vector3.ONE * sc)
+	for k in forks.size():
+		# the heap scan is pale grey from below: graded to bark brown with green leaves
+		_put(r, "branch_heap", b * forks[k], k * 2.1, 1.3, {"shadow": true, "tint": NEST_TINT})
+	_camp_clutter(r)
 	return r
+
+
+## Lived-in camp floor under the Home Tree: dragged-in branches, dead wood, basalt cobbles and
+## knapping debris, so the trampled ground reads as a camp from RTS height (look only, no
+## gameplay; clear of the 9 m ring where the Foragers start).
+static func _camp_clutter(r: Node3D) -> void:
+	var rock := {"tint": BASALT, "saturation": 0.5, "shadow": false}
+	_put(r, "dry_branches", Vector3(-4.6, 0.0, 2.4), 0.6, 2.4)
+	_put(r, "dry_branches", Vector3(3.8, 0.0, -4.4), 2.2, 2.2)
+	_put(r, "branch_heap", Vector3(-5.8, 0.0, -1.6), 0.9, 1.1, {"tint": NEST_TINT})
+	_put(r, "branch_heap", Vector3(4.4, 0.0, 4.6), 2.6, 0.9, {"tint": NEST_TINT})
+	_put(r, "dry_branches", Vector3(-1.4, 0.0, -6.2), 1.1, 2.0)
+	_put(r, "cobbles", Vector3(2.6, 0.0, 4.8), 0.3, 1.8, rock)
+	_put(r, "cobbles", Vector3(-1.8, 0.0, 5.6), 1.9, 1.5, rock)
+	_put(r, "stones", Vector3(1.2, 0.0, 5.2), 0.7, 2.6, rock)
+	_put(r, "stones", Vector3(-6.4, 0.0, 3.8), 2.4, 2.4, rock)
+	_put(r, "boulder_c", Vector3(3.4, -0.1, 5.6), 0.5, 0.35, rock)
+	_put(r, "boulder_b", Vector3(-7.2, -0.15, 0.4), 1.5, 0.45, rock)
+	_put(r, "tuber", Vector3(-2.6, 0.0, -2.8), 0.4, 2.0, {"shadow": false})
+	_put(r, "tuber", Vector3(-2.2, 0.0, -3.1), 2.0, 1.8, {"shadow": false})
+	return
+
+
+## The Home Tree's tree alone (command-card icon).
+static func home_tree_model() -> Node3D:
+	return ModelLib.make_node(GameConfig.HOME_TREE_MODEL, Transform3D.IDENTITY)
 
 
 ## Nest Grove: three young acacias with branch nests in the crowns (footprint 8 m).
@@ -99,11 +136,12 @@ static func building(type: String) -> Node3D:
 # --- resource nodes ---
 
 
-## Fig bush (food, "fruit"): a big Searsia bush.
+## Fig bush (food, "fruit"): a real fig (Ficus carica scan, PlantCatalog) grown to ~3.5 m with
+## a younger one beside it, dark broad leaves that read as food against the straw grass.
 static func fig_bush() -> Node3D:
 	var r := Node3D.new()
-	_put(r, "shrub_searsia", Vector3.ZERO, 0.0, 1.35)
-	_put(r, "shrub_searsia", Vector3(0.6, 0.0, 0.4), 2.0, 0.8)
+	_put(r, "fig_bush", Vector3.ZERO, 0.0, 1.6)
+	_put(r, "fig_bush", Vector3(1.1, 0.0, 0.6), 2.0, 1.0)
 	return r
 
 

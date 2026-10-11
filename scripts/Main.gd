@@ -17,12 +17,16 @@ var quality: int = 0
 var fog_on: bool = true
 var terrain: RtsTerrain
 var dressing: Dressing
+var grass: GrassField
+var reeds: GrassField
+var foot_dust: FootDust
 var units: Units
 var animals: Animals
 var game: Game
 var fog: FogOfWar
 var cam: RtsCamera
 var sun: DirectionalLight3D
+var env: Environment
 var marks: GroundMarks
 ## Rings, markers and footprints that must not be cut by the terrain (no depth test).
 var overlay: GroundMarks
@@ -80,6 +84,8 @@ func _ready() -> void:
 	dressing.name = "Dressing"
 	add_child(dressing)
 	dressing.build(terrain, Game.exclusions())
+	grass = GrassField.create(self, terrain, fog.texture, false)
+	reeds = GrassField.create(self, terrain, fog.texture, true)
 	marks = GroundMarks.new()
 	add_child(marks)
 	overlay = GroundMarks.new(true)
@@ -101,7 +107,10 @@ func _ready() -> void:
 	cam.name = "Camera"
 	add_child(cam)
 	cam.setup(terrain, GameConfig.CAM_START)
+	grass.follow(cam)
+	reeds.follow(cam)
 	_make_ghost_materials()
+	foot_dust = FootDust.create(self)
 	icons = IconBaker.new()
 	icons.name = "Icons"
 	add_child(icons)
@@ -134,7 +143,9 @@ func _ready() -> void:
 
 func _make_world() -> void:
 	var we := WorldEnvironment.new()
-	we.environment = WorldLook.make_environment()
+	env = WorldLook.make_environment()
+	add_child(Backdrop.new())
+	we.environment = env
 	add_child(we)
 	sun = WorldLook.make_sun()
 	add_child(sun)
@@ -163,7 +174,7 @@ func _icon_spec() -> Dictionary:
 			40.0
 		],
 		"home":
-		[func() -> Node3D: return ModelLib.make_node("home_fig", Transform3D.IDENTITY), 0.4, 15.0],
+		[func() -> Node3D: return Kit.home_tree_model(), 0.4, 15.0],
 		"nest_grove": [func() -> Node3D: return Kit.nest_grove(), 0.3, 30.0],
 		"cache": [func() -> Node3D: return Kit.cache(), 0.5, 35.0],
 		"knapping_floor":
@@ -278,7 +289,12 @@ func apply_quality(q: int) -> void:
 	vp.scaling_3d_scale = float(d["scale"])
 	vp.msaa_3d = d["msaa"]
 	sun.shadow_enabled = bool(d["shadows"])
-	RenderingServer.directional_shadow_atlas_set_size(4096 if q == 0 else 2048, true)
+	RenderingServer.directional_shadow_atlas_set_size(2048, true)
+	WorldLook.set_quality(env, bool(d["effects"]))
+	cam.tilt_shift = bool(d["effects"])
+	grass.set_quality(float(d["grass"]))
+	reeds.set_quality(float(d["grass"]))
+	cam.apply()
 	units.set_mesh_quality(q)
 	PerfOverlay.set_button_text("quality", "Quality: %s" % d["name"])
 
@@ -382,6 +398,8 @@ func _process(delta: float) -> void:
 			_refresh_selection_text()
 			hud.set_idle(game.idle_foragers().size())
 		_update_hints(delta)
+	foot_dust.tick(delta, units, quality == 0)
+	WorldLook.per_frame(sun, cam, units)
 	_status_timer -= delta
 	if _status_timer <= 0.0:
 		_status_timer = 0.25

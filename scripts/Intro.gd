@@ -1,12 +1,14 @@
 class_name Intro
 extends Node3D
 
-## Opening intro (GDD 11.1, Wayfarer GDD 4.3b): one unbroken camera move, no text, no input.
+## Opening intro (GDD 11.1, Wayfarer GDD 4.3b): one unbroken camera move, no input.
 ## A pale blue dot beside the sun -> the planet as a crescent that turns to a sunlit disc ->
-## Earth with drifting clouds, a scattering atmosphere, a lit day side and ocean glint -> a dive
-## onto the west shore of Lake Turkana in the East African rift -> through the cloud deck onto
-## the local map (RtsTerrain placeholder) -> Main's opening RTS camera pose -> cross-fade into
-## scenes/Main.tscn. Every number lives in IntroConfig.
+## the Earth of ~7 million years ago (title card; edited Blue Marble, tools/intro/bake_paleo.py)
+## with drifting clouds, a scattering atmosphere and ocean glint -> a dive onto Kanapoi by Lake
+## Lonyumun, ~4.2 million years ago (second title card) -> through the cloud deck into a
+## golden-hour glide down to the Home Tree, where a hominin wakes and climbs down to its band
+## (IntroLocal) -> Main's opening RTS camera pose -> cross-fade into scenes/Main.tscn.
+## Title cards: IntroTitles. Every number lives in IntroConfig / IntroLocal.
 ## Two worlds share this scene: the planet stage (km, planet at the origin) and the local stage
 ## (m, the RtsTerrain map). The cloud veil hides the switch at IntroConfig.SWITCH_T.
 ## After the first full viewing (flag in user://intro.cfg) a tap skips. User args `--bench`
@@ -29,9 +31,8 @@ var env_space: Environment
 var env_ground: Environment
 var world_env: WorldEnvironment
 var planet_root: Node3D
-var local_root: Node3D
-var terrain: RtsTerrain
-var ground_sun: DirectionalLight3D
+var local_root: IntroLocal
+var titles: IntroTitles
 var music: AudioStreamPlayer
 
 var _surface_mat: ShaderMaterial
@@ -47,8 +48,6 @@ var _dot: MeshInstance3D
 var _sun_dir: Vector3
 var _start_dir: Vector3
 var _target_dir: Vector3
-var _local_from: Transform3D
-var _local_to: Transform3D
 var _cues_done: Dictionary = {}
 var _handing_over: bool = false
 var _stage_local: bool = false
@@ -78,6 +77,9 @@ func _ready() -> void:
 	_make_local()
 	cam.current = true
 	_make_veil()
+	titles = IntroTitles.new()
+	titles.name = "Titles"
+	add_child(titles)
 	music = AudioStreamPlayer.new()
 	music.name = "Music"
 	add_child(music)
@@ -137,8 +139,6 @@ func _make_envs() -> void:
 	env_space.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	env_space.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	_tone(env_space)
-	# local stage: the game's own sky, fog and grade, so the cross-fade into Main matches
-	env_ground = WorldLook.make_environment()
 	world_env = WorldEnvironment.new()
 	world_env.environment = env_space
 	add_child(world_env)
@@ -282,35 +282,16 @@ func _sphere(node_name: String, radius: float, segments: int, mat: Material) -> 
 	return mi
 
 
-## Local stage: the placeholder map of the game scene, fully revealed, with Main's sun.
+## Local stage: the game's map, tree and props in golden-hour light, with the hero band
+## (IntroLocal). Its environment ends as the game's own (WorldLook), so the cross-fade matches.
 func _make_local() -> void:
-	local_root = Node3D.new()
+	local_root = IntroLocal.new()
 	local_root.name = "Local"
 	local_root.visible = false
+	local_root.live = not capture_mode
 	add_child(local_root)
-	var white := Image.create(1, 1, false, Image.FORMAT_R8)
-	white.fill(Color(1.0, 1.0, 1.0))
-	terrain = RtsTerrain.new()
-	terrain.name = "Terrain"
-	local_root.add_child(terrain)
-	terrain.build(ImageTexture.create_from_image(white))
-	Scenery.build(terrain, local_root)
-	ground_sun = WorldLook.make_sun()
-	ground_sun.name = "Sun"
-	local_root.add_child(ground_sun)
-	# end pose = Main's opening camera (RtsCamera at GameConfig.CAM_START, default height)
-	var rts := RtsCamera.new()
-	local_root.add_child(rts)
-	rts.setup(terrain, GameConfig.CAM_START)
-	_local_to = rts.global_transform
-	rts.current = false
-	rts.queue_free()
-	var f: Vector2 = GameConfig.CAM_START
-	var gy: float = terrain.height_at(f.x, f.y)
-	var h: float = IntroConfig.LOCAL_START_H
-	var back: float = h / tan(deg_to_rad(-IntroConfig.LOCAL_START_PITCH))
-	var from := Transform3D(Basis.IDENTITY, Vector3(f.x, gy + h, f.y + back))
-	_local_from = from.looking_at(Vector3(f.x, gy, f.y), Vector3.UP)
+	local_root.build(low_quality)
+	env_ground = local_root.env
 
 
 func _make_veil() -> void:
@@ -346,14 +327,17 @@ func apply(time_s: float) -> void:
 	_veil.visible = veil > 0.001
 	_veil_mat.set_shader_parameter("amount", veil)
 	_veil_mat.set_shader_parameter("travel", time_s * 0.8)
+	titles.update(time_s)
 	var local: bool = time_s >= IntroConfig.SWITCH_T
 	if local != _stage_local:
 		_stage_local = local
 		planet_root.visible = not local
 		local_root.visible = local
 		world_env.environment = env_ground if local else env_space
+		if not local:
+			cam.attributes = null
 	if local:
-		_apply_local(time_s)
+		local_root.apply(time_s, cam)
 	else:
 		_apply_planet(time_s)
 
@@ -373,6 +357,7 @@ func _apply_planet(time_s: float) -> void:
 	var pos: Vector3 = ground + up * alt - fwd * hd
 	var cam_up: Vector3 = fwd * sin(pitch) + up * cos(pitch)
 	cam.global_transform = Transform3D(Basis.IDENTITY, pos).looking_at(ground, cam_up)
+	cam.fov = IntroConfig.FOV
 	var d: float = pos.length()
 	var a: float = d - IntroConfig.PLANET_R
 	cam.near = clampf(a * 0.3, 0.05, 1.0e8)
@@ -401,21 +386,6 @@ func _apply_planet(time_s: float) -> void:
 	_cloud_mat.set_shader_parameter("cloud_shift", shift)
 	_rift_mat.set_shader_parameter("cloud_shift", shift)
 	_cloud_mat.set_shader_parameter("detail", 1.0 - smoothstep(60.0, 600.0, a))
-
-
-func _apply_local(time_s: float) -> void:
-	var u: float = clampf(
-		(time_s - IntroConfig.SWITCH_T) / (IntroConfig.LOCAL_END_T - IntroConfig.SWITCH_T), 0.0, 1.0
-	)
-	var s: float = 1.0 - pow(1.0 - u, 3.0)
-	cam.near = 0.5
-	cam.far = 4000.0
-	var p: Vector3 = _local_from.origin.lerp(_local_to.origin, s)
-	var q: Quaternion = _local_from.basis.get_rotation_quaternion().slerp(
-		_local_to.basis.get_rotation_quaternion(), s
-	)
-	cam.global_transform = Transform3D(Basis(q), p)
-	cam.fov = lerpf(IntroConfig.FOV, SpikeConfig.CAM_FOV, s)
 
 
 ## Monotone cubic (Fritsch-Carlson) through IntroConfig.KEYS. Returns alt (km), pitch, arc,
@@ -498,7 +468,9 @@ func _hand_over(fade_s: float) -> void:
 ## Freeze the last intro frame on top, swap to the game scene, then fade the frozen frame out.
 func _go_to_game(fade_s: float) -> void:
 	PerfOverlay.set_ui_visible(true)
-	if fade_s > 0.0:
+	# headless (tests): no frames are drawn, so there is nothing to freeze and frame_post_draw
+	# never fires
+	if fade_s > 0.0 and DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		var img: Image = get_viewport().get_texture().get_image()
 		cross_fade(get_tree().root, ImageTexture.create_from_image(img), fade_s)

@@ -73,7 +73,8 @@ func setup(t: RtsTerrain, f: FogOfWar, gm: GroundMarks) -> void:
 	body = VatModel.load_model(BODY_MODEL, true)
 	# the source fur texture is light tan and vanished on the straw ground; darken toward the
 	# look target's dark red-brown so bodies and paint read (DESIGN 8: units highest contrast)
-	body.material.set_shader_parameter("albedo_mul", Color(0.55, 0.43, 0.36))
+	body.material.set_shader_parameter("albedo_mul", Color(0.62, 0.49, 0.41))
+	body.material.set_shader_parameter("rim_strength", 0.7)
 	mesh_tris = body.triangles
 	for c in CLIPS:
 		_clip_rg.append(body.clip_rg(c))
@@ -360,6 +361,22 @@ func tick(dt: float) -> void:
 		walk[i] = move_toward(walk[i], want, dt * 6.0)
 
 
+## Chests of up to `n` units of team `t` (w = 1), padded with unused entries (w = 0), for the
+## canopy fade in shaders/foliage.gdshader.
+func reveal_points(t: int, n: int) -> PackedVector4Array:
+	var out := PackedVector4Array()
+	out.resize(n)
+	var k: int = 0
+	for i in count:
+		if k >= n:
+			break
+		if team[i] != t:
+			continue
+		out[k] = Vector4(pos[i].x, hgt[i] + 0.9, pos[i].y, 1.0)
+		k += 1
+	return out
+
+
 ## True when unit i should be drawn (own team, or seen through the fog).
 func is_seen(i: int) -> bool:
 	return team[i] == 0 or reveal_all or fog_off or fog.is_visible_cell(cell[i])
@@ -380,17 +397,18 @@ func render(alpha: float) -> void:
 		var cs: float = cos(a)
 		var sn: float = sin(a)
 		var o: int = vis * FLOATS
-		_buf[o] = cs
+		var us: float = SpikeConfig.UNIT_DRAW_SCALE
+		_buf[o] = cs * us
 		_buf[o + 1] = 0.0
-		_buf[o + 2] = sn
+		_buf[o + 2] = sn * us
 		_buf[o + 3] = p.x
 		_buf[o + 4] = 0.0
-		_buf[o + 5] = 1.0
+		_buf[o + 5] = us
 		_buf[o + 6] = 0.0
 		_buf[o + 7] = y
-		_buf[o + 8] = -sn
+		_buf[o + 8] = -sn * us
 		_buf[o + 9] = 0.0
-		_buf[o + 10] = cs
+		_buf[o + 10] = cs * us
 		_buf[o + 11] = p.y
 		var c: int = C_RUN if walk[i] > 0.35 else clip[i]
 		var rg: Vector2 = _clip_rg[c]

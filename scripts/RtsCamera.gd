@@ -9,7 +9,10 @@ extends Camera3D
 var terrain: RtsTerrain
 var focus: Vector2 = Vector2(256.0, 256.0)
 var height: float = SpikeConfig.CAM_DEFAULT_H
+## Tilt-shift depth of field on the top and bottom screen edges (WorldLook); off on Low.
+var tilt_shift: bool = true
 var _ground_y: float = 0.0
+var _ca: CameraAttributesPractical
 
 
 func setup(t: RtsTerrain, at: Vector2) -> void:
@@ -20,6 +23,8 @@ func setup(t: RtsTerrain, at: Vector2) -> void:
 	focus = at
 	_ground_y = terrain.height_at(at.x, at.y)
 	current = true
+	_ca = WorldLook.make_camera_attributes()
+	attributes = _ca
 	apply()
 
 
@@ -35,6 +40,8 @@ func apply() -> void:
 	var back: float = height / tan(tilt)
 	position = Vector3(focus.x, _ground_y + height, focus.y + back)
 	look_at(Vector3(focus.x, _ground_y, focus.y), Vector3.UP)
+	if _ca != null:
+		WorldLook.update_tilt_shift(_ca, height / sin(tilt), tilt_shift)
 
 
 ## Metres of ground per screen pixel at the focus (for panning).

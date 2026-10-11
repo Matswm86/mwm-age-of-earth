@@ -22,7 +22,8 @@ class Runner:
 		Engine.time_scale = 10.0
 		get_tree().change_scene_to_file.call_deferred("res://scenes/Intro.tscn")
 		var t0: int = Time.get_ticks_msec()
-		var ok_first: bool = await _wait_for_main(30.0)
+		# limits include building Main (~7 s headless with the 2026-10-11 art pass)
+		var ok_first: bool = await _wait_for_main(60.0)
 		var secs: float = float(Time.get_ticks_msec() - t0) / 1000.0
 		var cfg := ConfigFile.new()
 		var seen: bool = (
@@ -37,11 +38,17 @@ class Runner:
 		Engine.time_scale = 1.0
 		get_tree().change_scene_to_file("res://scenes/Intro.tscn")
 		await _frames(30)
+		# taps count only after IntroConfig.SKIP_AFTER on the intro's own clock (its build is slow)
+		for k in 600:
+			var it: Node = get_tree().current_scene
+			if it is Intro and (it as Intro).t > IntroConfig.SKIP_AFTER + 0.1:
+				break
+			await get_tree().process_frame
 		var tap := InputEventScreenTouch.new()
 		tap.pressed = true
 		tap.position = Vector2(960.0, 540.0)
 		Input.parse_input_event(tap)
-		var ok_skip: bool = await _wait_for_main(5.0)
+		var ok_skip: bool = await _wait_for_main(15.0)
 		print("second viewing: tap skipped to Main=%s" % ok_skip)
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(IntroConfig.SAVE_PATH))
 		print("FLOW PASS" if ok_first and seen and ok_skip else "FLOW FAIL")

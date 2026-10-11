@@ -8,6 +8,15 @@ render_mode cull_back;
 // occlusion under trees, rocks and buildings) stand in for the baked lightmap; ground_tex.g
 // tramples camp floors toward red earth. fog_tex R: 0 unexplored, 0.5 explored, 1 visible.
 
+#include "res://shaders/biome.gdshaderinc"
+
+uniform sampler2D biome_tex : filter_linear, repeat_disable;
+uniform vec3 grass_dry : source_color = vec3(0.70, 0.64, 0.33);
+uniform vec3 grass_green : source_color = vec3(0.38, 0.50, 0.17);
+uniform vec3 grass_fresh : source_color = vec3(0.52, 0.68, 0.20);
+uniform vec3 litter : source_color = vec3(0.24, 0.20, 0.13);
+uniform vec3 dirt : source_color = vec3(0.58, 0.50, 0.40);
+uniform float sward = 0.9;
 uniform sampler2D height_tex : filter_linear, repeat_disable;
 uniform sampler2D normal_tex : filter_linear_mipmap, repeat_disable;
 uniform sampler2D sky_ao_tex : filter_linear_mipmap, repeat_disable;
@@ -29,6 +38,7 @@ uniform float macro_hi = 1.12;
 uniform float wet_band_m = 2.5;
 
 varying vec2 world_xz;
+varying float ground_h;
 
 vec2 map_uv(vec2 xz) {
 	// 1025 samples 0.5 m apart cover 0..512 m inclusive
@@ -38,6 +48,7 @@ vec2 map_uv(vec2 xz) {
 void vertex() {
 	world_xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
 	VERTEX.y = textureLod(height_tex, map_uv(world_xz), 0.0).r;
+	ground_h = VERTEX.y;
 	vec3 n = textureLod(normal_tex, map_uv(world_xz), 0.0).rgb * 2.0 - 1.0;
 	NORMAL = normalize(n);
 }
@@ -61,9 +72,10 @@ void fragment() {
 	vec3 sb = texture(splat_b, uv).rgb;
 	vec2 gm = texture(ground_tex, world_xz / map_size).rg;
 	float w[7] = float[7](sa.r, sa.g, sa.b, sa.a, sb.r, sb.g, sb.b);
-	// trampled camp floor: grass gives way to red earth
+	// trampled camp floor: grass gives way to red earth; elsewhere the laterite only shows in
+	// small patches (the 4.2 Mya woodland floor is grass and litter, not open red soil)
+	w[1] *= 0.3;
 	w[0] *= 1.0 - 0.55 * gm.g;
-	w[1] += gm.g * 0.45;
 	int i1 = 0;
 	int i2 = 1;
 	if (w[1] > w[0]) { i1 = 1; i2 = 0; }
@@ -88,8 +100,19 @@ void fragment() {
 	// macro variation kills tiling at RTS height
 	float macro = texture(macro_tex, world_xz / 64.0).r;
 	alb *= mix(macro_lo, macro_hi, macro);
-	// wet band at the waterline
 	float shore_m = texture(shore_tex, uv).r * 40.0;
+	// biome (bake_biome.py): grass sward, forest litter, trampled trails
+	vec4 bio = texture(biome_tex, world_xz / map_size);
+	float lum = dot(alb, vec3(0.3, 0.59, 0.11));
+	float gd = grass_density(bio, gm.g, shore_m, sa.b, world_xz) * smoothstep(0.05, 0.25, ground_h);
+	vec3 gc = grass_colour(world_xz, bio.g, grass_dry, grass_green, grass_fresh);
+	alb = mix(alb, gc * clamp(lum * 1.5, 0.25, 1.1) * 0.55, gd * sward);
+	alb = mix(alb, litter * (0.6 + lum * 1.2), smoothstep(0.3, 0.9, bio.r) * 0.75 * step(0.0, ground_h));
+	float trail = max(smoothstep(0.1, 0.7, bio.b), smoothstep(0.1, 0.9, frayed(gm.g, world_xz)) * 0.85);
+	// trails stop at the waterline (the shore trail showed as a sand strip on the lake bed)
+	trail *= smoothstep(0.0, 0.3, ground_h);
+	alb = mix(alb, dirt * (0.42 + lum * 1.35), trail);
+	// wet band at the waterline
 	float wet = 1.0 - smoothstep(0.0, wet_band_m, shore_m);
 	alb *= mix(1.0, 0.62, wet);
 	float contact = gm.r;

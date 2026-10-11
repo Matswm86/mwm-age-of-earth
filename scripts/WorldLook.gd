@@ -1,20 +1,25 @@
 class_name WorldLook
 extends RefCounted
 
-## Lighting recipe for the Rift Lake (DESIGN 7.1), Godot Mobile renderer: Poly Haven
-## qwantani_late_afternoon sky (turned so its sun sits at the game sun), sky ambient, one
-## shadowed sun at elevation 20 deg / azimuth 258 deg (WSW, shadows fall ENE toward the lake),
-## AgX tonemap, warm depth fog, light glow. Static builders, so any scene can share the look.
+## Lighting recipe for the Rift Lake, Forward+ renderer (owner 2026-10-11: graphics first, the
+## visual target is a bright, high-key, saturated realistic RTS look). Poly Haven
+## qwantani_late_afternoon sky for ambient and reflections, one warm golden-hour sun at 30 deg
+## (SW, so the faces the camera sees are lit and shadows fall away up the screen), cool sky fill,
+## ACES tonemap with a grade (contrast up, saturation up), SSAO + SSIL for contact darkening and
+## bounce, SSR for the lake, light volumetric haze that catches the sun, glow on highlights.
+## set_quality() turns the expensive effects off for the Low preset. Static builders, so any
+## scene can share the look.
 
 const SKY_PATH: String = "res://assets/sky/qwantani_late_afternoon_4k.hdr"
-const SUN_ELEV_DEG: float = 20.0
+const SUN_ELEV_DEG: float = 30.0
 ## Azimuth from map north (-Z) clockwise toward east (+X).
-const SUN_AZ_DEG: float = 258.0
-const SUN_COLOUR := Color(1.0, 0.867, 0.706)
-const SUN_ENERGY: float = 1.6
-## HDRI sun texel at u = 0.600 (found with Blender); this yaw puts it at SUN_AZ_DEG.
-const SKY_YAW_DEG: float = 138.0
-const HAZE := Color(0.784, 0.722, 0.604)
+const SUN_AZ_DEG: float = 228.0
+const SUN_COLOUR := Color(1.0, 0.9, 0.78)
+const SUN_ENERGY: float = 3.0
+## HDRI sun texel at u = 0.600 (found with Blender); this yaw put it at azimuth 258 deg, so
+## turn it by the same amount the sun moved.
+const SKY_YAW_DEG: float = 138.0 - (258.0 - SUN_AZ_DEG)
+const HAZE := Color(0.80, 0.78, 0.70)
 
 
 ## Unit vector from the ground toward the sun.
@@ -30,7 +35,7 @@ static func make_environment() -> Environment:
 	var pano := PanoramaSkyMaterial.new()
 	pano.panorama = load(SKY_PATH)
 	sky.sky_material = pano
-	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	sky.process_mode = Sky.PROCESS_MODE_QUALITY
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
@@ -38,39 +43,118 @@ static func make_environment() -> Environment:
 	env.background_energy_multiplier = 1.0
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_sky_contribution = 1.0
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = 0.42
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
+	env.tonemap_white = 3.5
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.05
-	env.adjustment_saturation = 0.95
+	env.adjustment_brightness = 1.0
+	env.adjustment_contrast = 1.38
+	env.adjustment_saturation = 1.04
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = HAZE
-	env.fog_density = 0.0025
-	env.fog_sky_affect = 0.3
-	env.fog_aerial_perspective = 0.0
+	env.fog_light_energy = 1.0
+	env.fog_sun_scatter = 0.25
+	env.fog_density = 0.00025
+	env.fog_sky_affect = 0.1
+	env.fog_aerial_perspective = 0.3
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 1.2
+	env.glow_intensity = 0.5
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.02
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.glow_hdr_threshold = 1.0
+	env.ssao_radius = 1.6
+	env.ssao_intensity = 2.2
+	env.ssao_power = 1.6
+	env.ssao_detail = 0.6
+	env.ssao_horizon = 0.06
+	env.ssao_light_affect = 0.15
+	env.ssao_ao_channel_affect = 0.5
+	env.ssil_radius = 4.0
+	env.ssil_intensity = 0.8
+	env.ssil_sharpness = 0.98
+	env.ssr_max_steps = 64
+	env.ssr_fade_in = 0.15
+	env.ssr_fade_out = 2.0
+	env.ssr_depth_tolerance = 0.3
+	env.volumetric_fog_density = 0.0015
+	env.volumetric_fog_albedo = Color(0.92, 0.88, 0.80)
+	env.volumetric_fog_anisotropy = 0.6
+	env.volumetric_fog_length = 160.0
+	env.volumetric_fog_detail_spread = 2.0
+	env.volumetric_fog_ambient_inject = 0.15
+	env.volumetric_fog_sky_affect = 0.0
+	set_quality(env, true)
 	return env
 
 
-## Shadow distance 120 m, 2 splits blended (DESIGN 7.1). `shadows` off for the Low preset.
+## High: every Forward+ effect on. Low (32-bit tablet, or a slow phone): only the cheap ones.
+static func set_quality(env: Environment, high: bool) -> void:
+	env.ssao_enabled = high
+	env.ssil_enabled = high
+	env.ssr_enabled = high
+	env.volumetric_fog_enabled = high
+	env.fog_enabled = true
+
+
+## Shadow distance 90 m (fit_shadows scales it), 2 splits blended, soft-filtered edges.
+## `shadows` off for the Low preset.
 static func make_sun(shadows: bool = true) -> DirectionalLight3D:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_color = SUN_COLOUR
 	sun.light_energy = SUN_ENERGY
-	sun.light_angular_distance = 1.2
+	# no PCSS (angular size 0): it was the costliest part of the 36 % the sun shadow took
+	# (2026-10-11); the soft filter keeps the edges soft
+	sun.light_angular_distance = 0.0
+	sun.light_volumetric_fog_energy = 1.4
 	sun.shadow_enabled = shadows
+	# 2 splits (Godot has 2 or 4; 4 re-drew every caster twice more for ~1.5 ms); Main scales
+	# the distance with the camera height
+	# (fit_shadows) so the far zoom keeps its tree shadows and the default view stays sharp
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 120.0
-	sun.directional_shadow_split_1 = 0.25
+	sun.directional_shadow_max_distance = 90.0
+	sun.directional_shadow_split_1 = 0.3
 	sun.directional_shadow_blend_splits = true
-	sun.shadow_blur = 1.0
+	sun.directional_shadow_fade_start = 0.85
+	sun.shadow_blur = 0.8
+	sun.shadow_bias = 0.04
+	sun.shadow_normal_bias = 2.2
 	sun.basis = Basis.looking_at(-sun_dir(), Vector3.UP)
 	return sun
+
+
+## Tilt-shift: a camera-attribute depth of field that blurs the top (far) and bottom (near) screen
+## edges around the focus distance `focus_m`. Off on Low.
+static func make_camera_attributes() -> CameraAttributesPractical:
+	var ca := CameraAttributesPractical.new()
+	ca.dof_blur_far_enabled = true
+	ca.dof_blur_near_enabled = true
+	ca.dof_blur_amount = 0.05
+	return ca
+
+
+static func update_tilt_shift(ca: CameraAttributesPractical, focus_m: float, on: bool) -> void:
+	ca.dof_blur_far_enabled = on
+	ca.dof_blur_near_enabled = on
+	ca.dof_blur_far_distance = focus_m * 1.35
+	ca.dof_blur_far_transition = focus_m * 0.9
+	# near blur only on what is much closer than the ground (tall crowns right under the camera
+	# turned into paint smears at 0.62)
+	ca.dof_blur_near_distance = focus_m * 0.45
+	ca.dof_blur_near_transition = focus_m * 0.2
+
+
+## Shadow reach for an RTS camera `dist_m` from its focus: covers the far screen edge.
+static func fit_shadows(sun: DirectionalLight3D, dist_m: float) -> void:
+	sun.directional_shadow_max_distance = clampf(dist_m * 2.1, 55.0, 170.0)
+
+
+## Per-frame look upkeep for the match: shadow reach follows the camera, tree crowns fade over the
+## player's units (canopy fade, foliage.gdshader).
+static func per_frame(sun: DirectionalLight3D, cam: RtsCamera, units: Units) -> void:
+	fit_shadows(sun, cam.height / sin(deg_to_rad(cam.tilt_deg())))
+	ModelLib.set_reveal(units.reveal_points(0, 16))

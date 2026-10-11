@@ -2,7 +2,7 @@ class_name Dressing
 extends Node3D
 
 ## Vegetation and ground cover over the Rift Lake map (DESIGN 7.3, 7.5), all MultiMesh:
-## acacias (veg.png R), doum palms (G), grass tussocks (B), shore sedge (A), shrubs, boulders,
+## woodland trees (biome R), acacias, shrubs, boulders,
 ## cobble pavement. Instances are grouped in 64 m chunks so the camera culls them and each
 ## chunk's mesh LOD follows its distance; grass and cobbles stop at 60-70 m (DESIGN 7.3).
 ## Every tree, shrub and boulder stamps contact occlusion into the terrain's ground mask
@@ -18,8 +18,10 @@ const SEED: int = 20261011
 ## Per-kind density, spacing and size (metres). Densities are probabilities per grid cell.
 const GRASS_CELL: float = 3.2
 const SHRUB_CELL: float = 4.5
-const ACACIA_CELL: float = 9.0
-const PALM_CELL: float = 11.0
+const TREE_CELL: float = 7.5
+## Trees: full mesh up to this camera distance (to the 32 m chunk centre), far LOD beyond.
+const TREE_NEAR_M: float = 48.0
+const TREE_CHUNK_M: float = 32.0
 const COBBLE_CELL: float = 3.2
 const BOULDER_CELL: float = 14.0
 const GRASS_RANGE: float = 55.0
@@ -40,6 +42,7 @@ var _veg: Image
 var _shore: Image
 var _splat_a: Image
 var _splat_b: Image
+var _biome: Image
 var _rng := RandomNumberGenerator.new()
 var _excl: Array = []
 ## grass chunk key -> [MultiMeshInstance3D, Array[Transform3D]] per part, for clear_area()
@@ -55,9 +58,11 @@ func build(t: RtsTerrain, exclusions: Array) -> void:
 	_shore = _img("res://assets/terrain/rift_lake/shore.png")
 	_splat_a = _img("res://assets/terrain/rift_lake/splat_a.png")
 	_splat_b = _img("res://assets/terrain/rift_lake/splat_b.png")
+	_biome = _img(RtsTerrain.BIOME)
 	_trees()
 	_shrubs()
-	_grass()
+	# the tussock / sedge MultiMeshes (_grass) are replaced by the GPU grass and reed fields
+	# (GrassField): same look at RTS height, ~350k fewer triangles (A/B 2026-10-11)
 	_rocks()
 	terrain.commit_ground()
 
@@ -71,7 +76,9 @@ static func _img(path: String) -> Image:
 
 
 func _sample(img: Image, x: float, z: float) -> Color:
-	return img.get_pixel(clampi(int(x * 2.0), 0, 1024), clampi(int(z * 2.0), 0, 1024))
+	var w: int = img.get_width() - 1
+	var h: int = img.get_height() - 1
+	return img.get_pixel(clampi(int(x * 2.0), 0, w), clampi(int(z * 2.0), 0, h))
 
 
 ## Metres to the waterline (0 on the line, 40 = 40 m or more).
@@ -122,7 +129,7 @@ static func _chunk_key(p: Vector2, size: float) -> int:
 ## Adds one MultiMesh group per chunk for `model` (opts.big: 128 m chunks).
 func _add_chunked(model: String, xfs: Array[Transform3D], opts: Dictionary) -> Array:
 	var by: Dictionary = {}
-	var size: float = BIG_CHUNK_M if opts.get("big", false) else CHUNK_M
+	var size: float = float(opts.get("chunk", BIG_CHUNK_M if opts.get("big", false) else CHUNK_M))
 	for xf in xfs:
 		var k: int = _chunk_key(Vector2(xf.origin.x, xf.origin.z), size)
 		if not by.has(k):
@@ -140,28 +147,64 @@ func _add_chunked(model: String, xfs: Array[Transform3D], opts: Dictionary) -> A
 
 
 func _trees() -> void:
-	var acacias: Array[Transform3D] = []
-	for p in _grid(ACACIA_CELL):
-		var v: Color = _sample(_veg, p.x, p.y)
-		if _rng.randf() > v.r * 0.9 + 0.02 or not _on_land(p, 0.9) or not _free(p, 7.0):
+	# Kanapoi 4.2 Mya (owner 2026-10-11): closed woodland and gallery forest from the biome mask
+	# (R): broad-crowned trees packed so the crowns close into canopy walls, umbrella trees where
+	# the woodland opens, acacias on the drier ground.
+	var kinds: Array[String] = [
+		"chinaberry_a", "chinaberry_b", "chinaberry_young", "poinciana_b",
+		"acacia"
+	]
+	var lists: Dictionary = {}
+	for k in kinds:
+		var arr: Array[Transform3D] = []
+		lists[k] = arr
+	for p in _grid(TREE_CELL):
+		var b: Color = _sample(_biome, p.x, p.y)
+		var f: float = b.r
+		if f < 0.12 or _rng.randf() > pow(f, 0.7) * 1.05:
 			continue
-		acacias.append(_xf(p, _rng.randf_range(0.85, 1.2), 0.05))
-		terrain.stamp_contact(p.x, p.y, 5.5, 0.35)
-	var palms: Array[Transform3D] = []
-	for p in _grid(PALM_CELL):
-		var v: Color = _sample(_veg, p.x, p.y)
-		var sd: float = shore_m(p.x, p.y)
-		var band: float = 1.0 if sd > 6.0 and sd < 38.0 else 0.0
-		if _rng.randf() > v.g * 0.8 * band or not _on_land(p, 0.6) or not _free(p, 4.0):
+		if not _on_land(p, 0.9) or not _free(p, 5.0) or shore_m(p.x, p.y) < 5.0:
 			continue
-		palms.append(_xf(p, _rng.randf_range(0.75, 1.1), 0.05))
-		terrain.stamp_contact(p.x, p.y, 2.5, 0.3)
-	tree_count = acacias.size() + palms.size()
-	_add_chunked("acacia", acacias, {"big": true})
-	# Mexican fan palm stand-in: bleached trunk and lawn-green fronds pulled toward doum_green
-	_add_chunked(
-		"doum_palm", palms, {"big": true, "tint": Color(0.78, 0.76, 0.6), "saturation": 0.75}
-	)
+		var r: float = _rng.randf()
+		var k: String
+		var s: float
+		if f < 0.45 and r < 0.35:
+			k = "poinciana_b"
+			s = _rng.randf_range(0.8, 1.1)
+		elif f < 0.45 and b.g < 0.5 and r < 0.6:
+			k = "acacia"
+			s = _rng.randf_range(0.9, 1.25)
+		elif r < 0.45:
+			k = "chinaberry_a"
+			s = _rng.randf_range(1.0, 1.4)
+		elif r < 0.8:
+			k = "chinaberry_b"
+			s = _rng.randf_range(1.05, 1.45)
+		else:
+			k = "chinaberry_young"
+			s = _rng.randf_range(1.1, 1.6)
+		(lists[k] as Array[Transform3D]).append(_xf(p, s, 0.08))
+		terrain.stamp_contact(p.x, p.y, 4.0 * s, 0.45)
+	tree_count = 0
+	for k: String in kinds:
+		var list: Array[Transform3D] = lists[k]
+		tree_count += list.size()
+		if k == "acacia":
+			_add_chunked(k, list, {"big": true})
+			continue
+		# three parts per tree kind (trees were 12.5 ms of 24 at the default camera, 2026-10-11;
+		# their leaf cards are islands the auto-LOD cannot merge): the full mesh near the camera
+		# (no shadow), the far mesh with few large cards beyond TREE_NEAR_M, and the far mesh as
+		# the only shadow caster near the camera. 32 m chunks so the ranges switch per stand.
+		var far: String = k + "_far"
+		var c: float = TREE_CHUNK_M
+		_add_chunked(
+			k, list, {"chunk": c, "vis_end": TREE_NEAR_M, "vis_fade": true, "shadow": false}
+		)
+		_add_chunked(far, list, {"chunk": c, "vis_begin": TREE_NEAR_M, "vis_fade": true})
+		_add_chunked(far, list, {"chunk": c, "vis_end": TREE_NEAR_M + 8.0, "shadow_only": true})
+	# no palms: the only CC BY palm is a Mexican fan palm whose pale trunk vanished against the
+	# lake and left crowns floating over the water (2026-10-11); a real doum palm is still missing
 
 
 func _shrubs() -> void:

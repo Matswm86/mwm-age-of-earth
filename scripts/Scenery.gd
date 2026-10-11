@@ -36,5 +36,6 @@ static func build(terrain: RtsTerrain, parent: Node3D) -> void:
 			parent.add_child(n)
 	var spots: Array[Vector2] = Game.woodland_spots()
 	for k in spots.size():
-		parent.add_child(ModelLib.make_node("acacia", Game.woodland_xform(k, spots[k], terrain)))
+		var xf: Transform3D = Game.woodland_xform(k, spots[k], terrain)
+		parent.add_child(ModelLib.make_node(GameConfig.WOODLAND_TREE, xf))
 	terrain.commit_ground()

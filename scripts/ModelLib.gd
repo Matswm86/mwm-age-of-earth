@@ -10,7 +10,43 @@ extends RefCounted
 
 const DIR: String = "res://assets/game_models/"
 
+## Shared grade per model (owner feedback 2026-10-11: consistency beats detail): trees from
+## different sources are pulled toward one olive-green crown so they sit in one light. Used when
+## the caller passes no tint.
+const GRADE: Dictionary = {
+	"chinaberry_a": Color(0.74, 0.78, 0.6),
+	"home_tree": Color(0.74, 0.8, 0.6),
+	"chinaberry_b": Color(0.74, 0.78, 0.6),
+	"chinaberry_young": Color(0.78, 0.8, 0.6),
+	"poinciana_b": Color(0.76, 0.78, 0.62),
+	"acacia": Color(1.0, 1.0, 1.0),
+	# Searsia scan leaves are grey-silver: pulled toward the woodland green so the bushes read alive
+	"shrub_searsia": Color(0.72, 0.9, 0.55),
+	"shrub_leafy": Color(0.8, 0.9, 0.7),
+}
+
+## Models whose leaf cards use shaders/foliage.gdshader (crown shading, translucency, wind).
+const FOLIAGE: Array[String] = [
+	"home_tree",
+	"chinaberry_a",
+	"chinaberry_a_far",
+	"chinaberry_b",
+	"chinaberry_b_far",
+	"chinaberry_young",
+	"chinaberry_young_far",
+	"poinciana_b",
+	"poinciana_b_far",
+	"acacia",
+	"fig_bush",
+]
+
+## Leafy models whose generated mesh LODs drop the leaf cards (the bush turns into bare twigs at
+## RTS distance with the 6 px LOD threshold): keep them near LOD 0.
+const KEEP_LOD: Dictionary = {"shrub_searsia": 8.0, "shrub_leafy": 8.0, "fig_bush": 8.0}
+
 static var _parts: Dictionary = {}
+## Every foliage ShaderMaterial made, for the canopy fade (set_reveal).
+static var _foliage_mats: Array[ShaderMaterial] = []
 static var _mats: Dictionary = {}
 static var _dups: Dictionary = {}
 
@@ -69,6 +105,9 @@ static func _collect(n: Node, xf: Transform3D, out: Array) -> void:
 
 ## Material for surface `s` of `mesh`, fixed for the phone and tinted (cached).
 static func material(model: String, mesh: Mesh, s: int, tint: Color, opts: Dictionary) -> Material:
+	# far LODs share the grade of their tree
+	if model.ends_with("_far") and not opts.has("tint") and GRADE.has(model.trim_suffix("_far")):
+		tint = GRADE[model.trim_suffix("_far")]
 	var key: String = "%s|%d|%d|%s|%s" % [model, mesh.get_instance_id(), s, tint, str(opts)]
 	if _mats.has(key):
 		return _mats[key]
@@ -76,7 +115,14 @@ static func material(model: String, mesh: Mesh, s: int, tint: Color, opts: Dicti
 	var m: Material = src
 	if src is StandardMaterial3D:
 		var sm := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
-		if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or opts.get("leaf", false):
+		var leafy: bool = (
+			sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or opts.get("leaf", false)
+		)
+		if leafy and FOLIAGE.has(model) and not opts.has("fade"):
+			m = _foliage(model, mesh, sm, tint)
+			_mats[key] = m
+			return m
+		if leafy:
 			# keep the source cut-off (acacia leaves: 0.21); mipmapped leaf-card alpha drops far
 			# below 0.5 at RTS distance and the canopy vanishes (seen 2026-10-11)
 			var cut: float = 0.3
@@ -122,13 +168,49 @@ static func material(model: String, mesh: Mesh, s: int, tint: Color, opts: Dicti
 	return m
 
 
+## Leaf material on shaders/foliage.gdshader: the crown ellipsoid comes from the mesh bounds
+## (crown = upper 70 % of the tree), wind and translucency scale with the tree.
+static func _foliage(model: String, mesh: Mesh, sm: StandardMaterial3D, tint: Color) -> Material:
+	var fm := ShaderMaterial.new()
+	fm.shader = load("res://shaders/foliage.gdshader")
+	fm.set_shader_parameter("albedo_tex", sm.albedo_texture)
+	fm.set_shader_parameter(
+		"albedo_col",
+		Color(sm.albedo_color.r * tint.r, sm.albedo_color.g * tint.g, sm.albedo_color.b * tint.b)
+	)
+	if sm.normal_enabled and sm.normal_texture != null:
+		fm.set_shader_parameter("normal_tex", sm.normal_texture)
+		fm.set_shader_parameter("use_normal", true)
+	var cut: float = 0.3
+	if sm.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+		cut = minf(sm.alpha_scissor_threshold, 0.3)
+	fm.set_shader_parameter("alpha_cut", cut)
+	var bb: AABB = mesh.get_aabb()
+	var low: float = bb.position.y + bb.size.y * 0.3
+	var top: float = bb.end.y
+	var centre := Vector3(bb.get_center().x, (low + top) * 0.5, bb.get_center().z)
+	var rad := Vector3(bb.size.x * 0.5, (top - low) * 0.5, bb.size.z * 0.5).max(Vector3.ONE * 0.3)
+	fm.set_shader_parameter("crown_centre", centre)
+	fm.set_shader_parameter("crown_radius", rad)
+	var small: bool = model.begins_with("shrub") or model == "fig_bush"
+	fm.set_shader_parameter("wind", 0.03 if small else 0.12)
+	_foliage_mats.append(fm)
+	return fm
+
+
+## Canopy fade: up to 16 points (unit chests) the tree crowns must not hide.
+static func set_reveal(points: PackedVector4Array) -> void:
+	for m in _foliage_mats:
+		m.set_shader_parameter("reveal", points)
+
+
 ## A Node3D holding one MeshInstance3D per part. opts: tint (Color), shadow (bool),
 ## albedo (Color, replaces the texture), roughness, leaf (bool).
 static func make_node(model: String, xf: Transform3D, opts: Dictionary = {}) -> Node3D:
 	var root := Node3D.new()
 	root.name = model
 	root.transform = xf
-	var tint: Color = opts.get("tint", Color(1, 1, 1))
+	var tint: Color = opts.get("tint", GRADE.get(model, Color(1, 1, 1)))
 	for p: Dictionary in parts(model):
 		var mi := MeshInstance3D.new()
 		var mesh: Mesh = p["mesh"]
@@ -138,6 +220,8 @@ static func make_node(model: String, xf: Transform3D, opts: Dictionary = {}) -> 
 			mi.set_surface_override_material(s, material(model, mesh, s, tint, opts))
 		if not opts.get("shadow", true):
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if KEEP_LOD.has(model):
+			mi.lod_bias = KEEP_LOD[model]
 		root.add_child(mi)
 	return root
 
@@ -150,7 +234,7 @@ static func make_multimesh(
 	var out: Array = []
 	if xforms.is_empty():
 		return out
-	var tint: Color = opts.get("tint", Color(1, 1, 1))
+	var tint: Color = opts.get("tint", GRADE.get(model, Color(1, 1, 1)))
 	var all: Array = parts(model)
 	for pi in all.size():
 		if opts.has("part") and int(opts["part"]) != pi:
@@ -185,8 +269,18 @@ static func make_multimesh(
 			mmi.visibility_range_end = float(opts["vis_end"])
 			mmi.visibility_range_end_margin = 8.0
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		if opts.has("vis_begin"):
+			mmi.visibility_range_begin = float(opts["vis_begin"])
+			mmi.visibility_range_begin_margin = 8.0
+		if opts.get("vis_fade", false):
+			# dithered cross-fade between the near and far LOD (Forward+)
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		if opts.get("shadow_only", false):
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		if opts.has("lod_bias"):
 			mmi.lod_bias = float(opts["lod_bias"])
+		elif KEEP_LOD.has(model):
+			mmi.lod_bias = KEEP_LOD[model]
 		out.append(mmi)
 	return out
 

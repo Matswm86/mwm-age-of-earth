@@ -4,8 +4,8 @@ extends Node3D
 ## The Rift Lake map (West Turkana, Copernicus GLO-30 at 1:10, DESIGN 7.2): 512 x 512 m, heights
 ## from assets/terrain/game/height_f32.bin (vertical exaggeration x3 baked in, lake surface at y 0),
 ## a 7-layer height-blended PBR ground (shaders/terrain.gdshader), the Lake Turkana water plane
-## (shaders/water.gdshader) and the 128 x 128 navigation grid (4 m cells, water and wet shore
-## blocked).
+## (shaders/water.gdshader) and the 128 x 128 navigation
+## grid (4 m cells, water and wet shore blocked).
 ## The ground mesh is one flat 64 x 64 m grid reused by 8 x 8 chunks; the vertex shader lifts it
 ## from the height texture, so nothing heavy is built on the CPU (the intro builds this too).
 ## ground_image (512 x 512, 1 m texels) holds runtime marks the shader reads: R contact
@@ -13,6 +13,8 @@ extends Node3D
 
 const DIR: String = "res://assets/terrain/game/"
 const SRC: String = "res://assets/terrain/rift_lake/"
+## Vegetation biome mask (tools/game/bake_biome.py): R forest, G lush, B trails, A reeds.
+const BIOME: String = "res://assets/terrain/game/biome.png"
 const CHUNKS: int = 8
 ## Layer tiling in metres and albedo tints (DESIGN 7.2), splat order a.rgba then b.rgb.
 const TILE_M: Array[float] = [3.0, 2.5, 3.5, 3.0, 2.5, 1.8, 3.0]
@@ -65,6 +67,7 @@ func build(fog_tex: Texture2D) -> void:
 	m.set_shader_parameter("splat_b", load(SRC + "splat_b.png"))
 	m.set_shader_parameter("shore_tex", load(SRC + "shore.png"))
 	m.set_shader_parameter("ground_tex", ground_tex)
+	m.set_shader_parameter("biome_tex", load(BIOME))
 	m.set_shader_parameter("macro_tex", macro)
 	m.set_shader_parameter("albedo_arr", load(DIR + "albedo_array.png"))
 	m.set_shader_parameter("normal_arr", load(DIR + "normal_array.png"))
@@ -276,7 +279,6 @@ func _make_water(fog_tex: Texture2D) -> void:
 	water_mat.shader = load("res://shaders/water.gdshader")
 	water_mat.set_shader_parameter("fog_tex", fog_tex)
 	water_mat.set_shader_parameter("map_size", SpikeConfig.MAP_SIZE)
-	water_mat.set_shader_parameter("depth_tex", load(SRC + "water.png"))
 	water_mat.set_shader_parameter("shore_tex", load(SRC + "shore.png"))
 	for k in 2:
 		var nt := NoiseTexture2D.new()
@@ -303,11 +305,11 @@ func _make_water(fog_tex: Texture2D) -> void:
 	# the lake covers the east of the map (water.png: x >= 339.5 m) and runs on past the map edge
 	# to the horizon (Lake Turkana is 30 km wide), so no map edge shows from the intro or far zoom
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(1400.0, 2200.0)
+	plane.size = Vector2(9000.0, 9000.0)
 	var water := MeshInstance3D.new()
 	water.name = "Lake"
 	water.mesh = plane
 	water.material_override = water_mat
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	water.position = Vector3(330.0 + 700.0, SpikeConfig.WATER_LEVEL, SpikeConfig.MAP_SIZE * 0.5)
+	water.position = Vector3(330.0 + 4500.0, SpikeConfig.WATER_LEVEL, SpikeConfig.MAP_SIZE * 0.5)
 	add_child(water)

@@ -16,12 +16,13 @@ void fragment() {
 	vec3 c = col.rgb;
 	float a = 0.0;
 	if (mode < 0.5) {
-		// darker than the paint so white kaolin discs do not read as plates
-		c = col.rgb * 0.62;
-		float fill = (1.0 - smoothstep(0.45, 0.9, r)) * col.a;
-		float o = smoothstep(0.86 - aa, 0.88, r) * (1.0 - smoothstep(0.93, 0.93 + aa, r));
-		c = mix(c, outline, o);
-		a = max(fill, o * 0.45);
+		// unit foot mark (owner feedback 2026-10-11): a soft dark contact shadow, plus a thin
+		// team-coloured ring instead of a solid plate
+		float blob = (1.0 - smoothstep(0.0, 0.75, r)) * 0.5;
+		float ring = smoothstep(0.74 - aa, 0.76, r) * (1.0 - smoothstep(0.86, 0.86 + aa, r));
+		float ring_a = clamp(col.a * 2.4, 0.0, 0.9) * ring;
+		c = mix(vec3(0.02, 0.02, 0.015), col.rgb, step(0.001, ring_a) * ring);
+		a = max(blob * (1.0 - ring), ring_a);
 	} else if (mode < 1.5) {
 		float band = smoothstep(0.80 - aa, 0.80, r) * (1.0 - smoothstep(0.92, 0.92 + aa, r));
 		float o = smoothstep(0.75 - aa, 0.77, r) * (1.0 - smoothstep(0.96, 0.96 + aa, r));

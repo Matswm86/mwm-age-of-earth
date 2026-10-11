@@ -10,16 +10,18 @@ const PLANET_R: float = 6371.0
 const ATMOS_R: float = 6471.0
 const CLOUD_ALT: float = 6.0
 
-# --- geography (degrees). Keep in sync with tools/intro/bake_intro_assets.py ---
-## Dive target: west shore of Lake Turkana (picked on the Sentinel-2 mosaic; it is NOT the
-## GDD start site near Lomekwi 3, whose coordinates are still owed from a verified source).
-const TARGET_LAT: float = 4.0
-const TARGET_LON: float = 35.86
-## Ground height at the target (km, Copernicus GLO-30, lake level 362 m).
-const TARGET_H: float = 0.37
+# --- geography (degrees). Keep in sync with tools/intro/bake_dem.py and bake_paleo.py ---
+## Dive target: the Kanapoi fossil site, SW of Lake Turkana (Paleobiology Database collection
+## 22234, after Patterson, Behrensmeyer & Sill 1970: 2.3167 N, 36.0667 E), home of
+## Australopithecus anamensis ~4.2 Ma. The intro's Lake Lonyumun shore runs past it (outline
+## invented, tools/intro/bake_paleo.py).
+const TARGET_LAT: float = 2.3167
+const TARGET_LON: float = 36.0667
+## Ground height at the target (km, Copernicus GLO-30 578 m; the drawn lake sits at 560 m).
+const TARGET_H: float = 0.578
 const BMNG_REGION: Vector4 = Vector4(27.5, -4.7, 44.5, 12.3)
-const PATCH: Vector4 = Vector4(34.4, 2.5, 37.0, 5.1)
-const FINE: Vector4 = Vector4(35.625, 3.825, 35.975, 4.175)
+const PATCH: Vector4 = Vector4(34.8, 1.05, 37.35, 3.6)
+const FINE: Vector4 = Vector4(35.895, 2.145, 36.245, 2.495)
 ## Clear-sky hole in the cloud layer round the target (degrees radius); the Turkana basin is
 ## one of the driest places in East Africa.
 const CLEAR_HOLE_DEG: float = 5.5
@@ -64,13 +66,12 @@ const KEYS: Array[Array] = [
 const SWITCH_T: float = 64.0
 const VEIL_IN: Vector2 = Vector2(61.6, 63.7)
 const VEIL_OUT: Vector2 = Vector2(64.3, 66.2)
-## Local stage: camera starts this high above the start focus at this pitch and settles into
-## Main's opening RTS pose by LOCAL_END_T.
-const LOCAL_START_H: float = 380.0
-const LOCAL_START_PITCH: float = -60.0
-const LOCAL_END_T: float = 72.5
+## Local stage (after the clouds): a golden-hour glide down to the Home Tree, a hominin wakes
+## in its nest and climbs down the trunk (IntroLocal.gd, all times and paths in IntroLocal's
+## constants), the camera rises into Main's opening RTS pose and the light turns into the game's.
+const LOCAL_END_T: float = 93.0
 ## Cross-fade into the game scene.
-const FADE_START_T: float = 73.5
+const FADE_START_T: float = 93.6
 const FADE_SECONDS: float = 1.4
 ## After the first viewing a tap skips; ignore taps in the first moments.
 const SKIP_AFTER: float = 0.6
@@ -85,8 +86,17 @@ const CUES: Dictionary = {
 	"dive": 44.0,
 	"clouds": 62.0,
 	"landfall": 64.0,
-	"handover": 73.5,
+	"wake": 75.5,
+	"climb": 78.6,
+	"handover": 93.6,
 }
+
+# --- title cards (owner 2026-10-11): [fade in start, fully in, fade out start, gone] ---
+const TITLE_GLOBE: Vector4 = Vector4(8.0, 10.0, 18.0, 20.0)
+const TITLE_DIVE: Vector4 = Vector4(45.0, 47.0, 56.0, 58.0)
+const TITLE_GLOBE_TEXT: String = "About 7 million years ago"
+const TITLE_DIVE_TEXT: String = "About 4.2 million years ago"
+const TITLE_DIVE_SUB: String = "Lake Lonyumun, northern Kenya"
 
 # --- look ---
 const FOV: float = 40.0

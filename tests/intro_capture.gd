@@ -3,11 +3,13 @@ extends Node
 ## Dev-only screenshot bot for the opening intro (excluded from the APK with tests/*). Run under
 ## Xvfb at 1920 x 1080 with CAPTURE_DIR set (game-studio CLAUDE.md recipe), scene
 ## res://tests/intro_capture.tscn. Seeks the intro to fixed times and saves
-## intro_<nn>_<t>s.png, then shows the cross-fade into Main (intro_99_*). Optional
+## intro_<nn>_<t>s.png (every ~5 s, plus the wake and four climb frames), then shows the
+## cross-fade into Main (intro_99_*). Optional
 ## INTRO_TIMES="1,12,30" overrides the list.
 
 const TIMES: Array[float] = [
-	1.0, 9.0, 17.0, 24.0, 32.0, 40.0, 47.0, 52.0, 57.0, 60.5, 62.8, 64.6, 67.0, 72.8
+	1.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 63.0, 65.0,
+	70.0, 75.0, 77.0, 80.0, 81.5, 83.0, 84.5, 87.0, 90.0, 93.0
 ]
 
 var out_dir: String = OS.get_environment("CAPTURE_DIR")

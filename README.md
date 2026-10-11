@@ -1,11 +1,13 @@
 # Age of Earth (working title)
 
 <p>
-  <img src="screenshots/intro_lake.jpg" width="640" alt="Opening scene: low orbital view down Lake Turkana in the East African rift, with real mountains and haze">
-  <img src="screenshots/intro_africa.jpg" width="640" alt="Opening scene: Africa from space with real cloud cover, as the camera dives toward the rift valley">
+  <img src="screenshots/game_hero.jpg" width="640" alt="The camp at the Home Tree: a band of early humans on a trampled floor with foot trails, golden grass, woodland and the lake behind">
+  <img src="screenshots/game_camp.jpg" width="640" alt="The default game view at match start: Foragers by the Home Tree, fig bushes and trails through the grass">
+  <img src="screenshots/intro_lake.jpg" width="640" alt="Opening scene: the dive toward Lake Lonyumun with the title About 4.2 million years ago">
+  <img src="screenshots/intro_africa.jpg" width="640" alt="Opening scene: Africa from space as it may have looked about 7 million years ago">
 </p>
 
-A real-time strategy game for Android in the classic town-building genre: gather food, stone and wood, build a camp, advance through the ages, train a band and beat computer opponents. Your people start at the very beginning, as early humans at an East African rift lake, and discover the cutting stone, fire and words to reach the next age.
+A real-time strategy game for Android in the classic town-building genre: gather food, stone and wood, build a camp, advance through the ages, train a band and beat computer opponents. Your people start about 4.2 million years ago, as early humans by Lake Lonyumun in the East African rift, and discover the cutting stone, fire and words to reach the next age.
 
 **Download the Android APK:** https://github.com/Matswm86/mwm-age-of-earth/releases/download/latest/mwm-age-of-earth.apk
 
@@ -16,9 +18,9 @@ A real-time strategy game for Android in the classic town-building genre: gather
 
 An early playable build. The graphics are being rebuilt; the game screens below the opening are not final.
 
-- **Opening:** about 75 seconds from a pale blue dot in space down to Lake Turkana in the East African rift, then into your camp. Tap to skip after the first viewing.
+- **Opening:** about 95 seconds. A pale blue dot becomes Earth as it may have looked about 7 million years ago, the camera dives to Lake Lonyumun about 4.2 million years ago, and an early human wakes in a tree nest and climbs down to the band. Tap to skip after the first viewing.
 - **Age 1 start:** a band of 6 foragers at the Home Tree. Gather food, wood and stone, build a Nest Grove, Cache and Knapping Floor, train foragers and research "The Stone That Cuts". Hints show each next step.
-- **Map:** real West Turkana terrain from Copernicus elevation data, with photo-scanned ground, trees, rocks and animals (credits in `CREDITS.md`).
+- **Map:** a lakeside woodland camp built on real West Turkana terrain (Copernicus elevation data): wind-blown grass, photoreal trees, see-through lake water, foot trails, golden light. High and Low quality settings. Credits in `CREDITS.md`.
 - **Controls:** tap a unit, drag a selection box, tap the ground to move or gather, two fingers to pan, pinch to zoom. **Menu** holds the speed bench; a three-finger tap shows the frame rate.
 - Not built yet: combat, the computer opponent, sound.
 
@@ -28,7 +30,7 @@ Version 1: one people, the first three ages, one real-terrain rift-lake map, ski
 
 ## For developers
 
-Godot 4.6.2, GDScript with static types, `mobile` renderer, landscape 1920x1080.
+Godot 4.6.2, GDScript with static types, `forward_plus` renderer (also on Android), landscape 1920x1080. Menu > Quality switches High (SSAO, SSIL, SSR, volumetric haze, tilt-shift, MSAA 2x, sun shadows) and Low (all of those off, a third of the grass).
 
 | Path | What |
 |---|---|

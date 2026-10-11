@@ -12,7 +12,7 @@ import rasterio
 from scipy import ndimage
 
 # keep in sync with bake_intro_assets.py PATCH
-LON0, LAT0, LON1, LAT1 = 34.4, 2.5, 37.0, 5.1
+LON0, LAT0, LON1, LAT1 = 34.8, 1.05, 37.35, 3.6
 N = 2048
 
 

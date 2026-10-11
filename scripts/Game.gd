@@ -172,7 +172,7 @@ func _woodland() -> void:
 	var spots: Array[Vector2] = woodland_spots()
 	for k in spots.size():
 		var p: Vector2 = spots[k]
-		add_child(ModelLib.make_node("acacia", woodland_xform(k, p, terrain)))
+		add_child(ModelLib.make_node(GameConfig.WOODLAND_TREE, woodland_xform(k, p, terrain)))
 		terrain.stamp_contact(p.x, p.y, 5.5, 0.35)
 
 

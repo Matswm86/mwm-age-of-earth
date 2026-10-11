@@ -24,6 +24,11 @@ const TUBER_PATCHES: Array[Vector2] = [Vector2(398.0, 220.0), Vector2(420.0, 224
 const CARCASSES: Array[Vector2] = [Vector2(418.0, 318.0), Vector2(398.0, 322.0)]
 ## Woodland ~30 m west (kit "wood" 6000): dead-wood heaps under an acacia stand.
 const WOODLAND := Vector2(378.0, 250.0)
+## The woodland stand's tree (umbrella-crowned, reads as the wood source from RTS height).
+const WOODLAND_TREE: String = "poinciana_b"
+## Home Tree: a broad Melia-like crown at 1.75x (about 13 m tall, 18 m across), nests in the fork.
+const HOME_TREE_MODEL: String = "home_tree"
+const HOME_TREE_SCALE: float = 1.75
 const WOOD_HEAPS: Array[Vector2] = [
 	Vector2(381.0, 244.0),
 	Vector2(374.0, 255.0),
@@ -59,7 +64,7 @@ const FOOTPRINT: Dictionary = {
 }
 ## Trampled red-earth floor radius around each building (DESIGN 7.2).
 const TRAMPLE_R: Dictionary = {
-	"home_tree": 16.0,
+	"home_tree": 11.0,
 	"nest_grove": 7.0,
 	"cache": 4.0,
 	"knapping_floor": 5.0,
@@ -86,7 +91,7 @@ const NODE_RADIUS: Dictionary = {
 const RETARGET_M: float = 30.0
 
 # --- camera start (the intro hands over on SpikeConfig.BENCH_CENTRE) ---
-const CAM_START := Vector2(412.0, 270.0)
+const CAM_START := Vector2(408.0, 270.0)
 
 # --- look ---
 const SELECT := Color(0.608, 0.878, 0.478)

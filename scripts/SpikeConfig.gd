@@ -39,6 +39,9 @@ const UNIT_SPEED: float = 3.2
 ## Spike placeholder: no unit vision exists in balance.json yet (buildings use 30-34 m).
 const UNIT_SIGHT_M: float = 24.0
 const UNIT_RADIUS: float = 0.5
+## Hominin bodies are drawn this much larger than life (1.3 m -> 1.56 m) so they read at RTS zoom
+## (owner 2026-10-11: units larger and crisper); the simulation sizes do not change.
+const UNIT_DRAW_SCALE: float = 1.2
 ## Units closer than this push each other apart (m).
 const SEPARATION_DIST: float = 1.15
 const SEPARATION_PUSH: float = 6.0
@@ -98,8 +101,23 @@ const BENCH_RUNS: Array[Vector2] = [
 ]
 
 # --- graphics quality ---
-## High = owner's phone (SM-S931B), Low = 32-bit Samsung tablet.
+## High = owner's phone (SM-S931B), Low = 32-bit Samsung tablet. `effects` = SSAO, SSIL, SSR,
+## volumetric haze and tilt-shift (Forward+); `grass` = share of grass blades drawn.
 const QUALITY: Array[Dictionary] = [
-	{"name": "High", "scale": 1.0, "shadows": true, "msaa": Viewport.MSAA_2X},
-	{"name": "Low", "scale": 0.75, "shadows": false, "msaa": Viewport.MSAA_DISABLED},
+	{
+		"name": "High",
+		"scale": 1.0,
+		"shadows": true,
+		"msaa": Viewport.MSAA_2X,
+		"effects": true,
+		"grass": 1.0
+	},
+	{
+		"name": "Low",
+		"scale": 0.75,
+		"shadows": false,
+		"msaa": Viewport.MSAA_DISABLED,
+		"effects": false,
+		"grass": 0.35
+	},
 ]
