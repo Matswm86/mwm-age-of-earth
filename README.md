@@ -1,7 +1,8 @@
 # Age of Earth (working title)
 
 <p>
-  <img src="screenshots/spike.jpg" width="640" alt="Tech spike: 210 placeholder early-human units in blue, red and yellow teams walking across a savanna ridge, seen from a steep strategy camera">
+  <img src="screenshots/intro_lake.jpg" width="640" alt="Opening scene: low orbital view down Lake Turkana in the East African rift, with real mountains and haze">
+  <img src="screenshots/intro_africa.jpg" width="640" alt="Opening scene: Africa from space with real cloud cover, as the camera dives toward the rift valley">
 </p>
 
 A real-time strategy game for Android in the classic town-building genre: gather food, stone and wood, build a camp, advance through the ages, train a band and beat computer opponents. Your people start at the very beginning, as early humans at an East African rift lake, and discover the cutting stone, fire and words to reach the next age.
@@ -11,17 +12,15 @@ A real-time strategy game for Android in the classic town-building genre: gather
 - No ads, no tracking, no accounts, no network, no in-app purchases. Asks for no Android permissions.
 - Debug-signed sideload build (built by GitHub Actions on every push to `main`). If Android warns about the source, allow "Install from this source".
 
-## What is in this build: the tech spike
+## What is in this build
 
-This build is a speed test, not the game yet. It answers one question: can a phone move about 200 animated units at 60 fps? Everything on screen is placeholder art.
+An early playable build. The graphics are being rebuilt; the game screens below the opening are not final.
 
-- 150, 165 or 210 units on a 512 x 512 m map with ridges and a lake. All units are drawn in one batch, with the walk cycle done in the shader instead of skeletons.
-- Flow-field pathfinding on a 128 x 128 grid (4 m cells), built on a worker thread; units keep apart and walk around ridges and water.
-- Fog of war (unexplored, explored, visible), updated 5 times a second.
-- Touch: tap a unit, drag a selection box, tap the ground to move, two fingers to pan, pinch to zoom.
-- **Bench all** runs 150, 165 and 210 units at normal speed and 210 at 1.5x speed for 20 s each, then shows average fps, 1% low fps and frame times. A three-finger tap hides or shows the readout.
-
-How to test on a phone: install, leave Quality on High, tap **Bench all**, put the phone down for about 95 seconds and screenshot the results. The target is 60 fps with 210 units on a current phone, and 30 fps on Low quality on an older tablet.
+- **Opening:** about 75 seconds from a pale blue dot in space down to Lake Turkana in the East African rift, then into your camp. Tap to skip after the first viewing.
+- **Age 1 start:** a band of 6 foragers at the Home Tree. Gather food, wood and stone, build a Nest Grove, Cache and Knapping Floor, train foragers and research "The Stone That Cuts". Hints show each next step.
+- **Map:** real West Turkana terrain from Copernicus elevation data, with photo-scanned ground, trees, rocks and animals (credits in `CREDITS.md`).
+- **Controls:** tap a unit, drag a selection box, tap the ground to move or gather, two fingers to pan, pinch to zoom. **Menu** holds the speed bench; a three-finger tap shows the frame rate.
+- Not built yet: combat, the computer opponent, sound.
 
 ## Plan
 
