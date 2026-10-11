@@ -198,6 +198,12 @@ func _solve_climber_times() -> void:
 	) / WALK_V
 
 
+## Climber timeline for Sfx (intro seconds): end of the step onto the trunk (climb starts), end
+## of the climb (drop starts), landing, arrival at the band.
+func climber_times() -> Vector4:
+	return Vector4(_step_end, _climb_end, _drop_end, _walk_end)
+
+
 ## Dev check only (debug builds, env INTRO_TREE=<game model>): swap the Home Tree model, e.g. to
 ## test the climb on a tree whose trunk reaches the ground.
 func _debug_tree_override(tree: Node3D, model: Node3D) -> Node3D:

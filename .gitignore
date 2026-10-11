@@ -53,3 +53,13 @@ assets/_raw/**
 # (UV2 holds vertex ids) must reach CI
 !assets/terrain/game/*.import
 !assets/vat/*.glb.import
+
+# Match textures (models, bodies, hero): VRAM compression (ETC2/ASTC on the phone), normal-map
+# mode and the 2048 px limit must reach CI; CI's default import left them uncompressed (~1.1 GB of
+# VRAM, phone pass 2026-10-11)
+!assets/game_models/*.png.import
+!assets/game_models/*.jpg.import
+!assets/vat/*.png.import
+!assets/vat/*.jpg.import
+!assets/intro/hero/*.png.import
+!assets/intro/hero/*.jpg.import

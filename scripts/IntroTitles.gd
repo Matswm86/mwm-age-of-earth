@@ -1,8 +1,8 @@
 class_name IntroTitles
 extends CanvasLayer
 
-## The two title cards of the opening intro (owner 2026-10-11): "About 7 million years ago" over
-## the globe, then "About 4.2 million years ago" with the place line during the dive. White
+## The two title cards of the opening intro (owner 2026-10-11): "About 4.2 million years ago" over
+## the globe, then "Lake Lonyumun" with "northern Kenya" during the dive. White
 ## Cinzel (SIL OFL 1.1) with a soft shadow, the place line in EB Garamond Italic (SIL OFL 1.1),
 ## fading in and out on IntroConfig.TITLE_* windows. update(t) is a pure function of the
 ## timeline, so the screenshot bot can seek.

@@ -44,6 +44,15 @@ const FOLIAGE: Array[String] = [
 ## RTS distance with the 6 px LOD threshold): keep them near LOD 0.
 const KEEP_LOD: Dictionary = {"shrub_searsia": 8.0, "shrub_leafy": 8.0, "fig_bush": 8.0}
 
+## Big trees placed as single nodes (Home Tree, the woodland stand): the full mesh draws without a
+## shadow and a cheaper twin casts it (the 5 woodland trees and the Home Tree were ~450k shadow
+## triangles, phone pass 2026-10-11).
+const SHADOW_TWIN: Array[String] = [
+	"home_tree", "poinciana_b", "chinaberry_a", "chinaberry_b", "chinaberry_young"
+]
+## LOD bias of a twin that reuses the tree's own mesh: low, so it picks a coarse LOD.
+const SHADOW_TWIN_LOD_BIAS: float = 0.05
+
 static var _parts: Dictionary = {}
 ## Every foliage ShaderMaterial made, for the canopy fade (set_reveal).
 static var _foliage_mats: Array[ShaderMaterial] = []
@@ -198,10 +207,15 @@ static func _foliage(model: String, mesh: Mesh, sm: StandardMaterial3D, tint: Co
 	return fm
 
 
-## Canopy fade: up to 16 points (unit chests) the tree crowns must not hide.
+## Canopy fade: up to 16 points (unit chests) the tree crowns must not hide; used points come
+## first (w = 1), so the shader loops only over those.
 static func set_reveal(points: PackedVector4Array) -> void:
+	var n: int = 0
+	while n < points.size() and points[n].w > 0.5:
+		n += 1
 	for m in _foliage_mats:
 		m.set_shader_parameter("reveal", points)
+		m.set_shader_parameter("reveal_count", n)
 
 
 ## A Node3D holding one MeshInstance3D per part. opts: tint (Color), shadow (bool),
@@ -211,6 +225,32 @@ static func make_node(model: String, xf: Transform3D, opts: Dictionary = {}) -> 
 	root.name = model
 	root.transform = xf
 	var tint: Color = opts.get("tint", GRADE.get(model, Color(1, 1, 1)))
+	var twin: bool = SHADOW_TWIN.has(model) and opts.get("shadow", true)
+	_add_parts(
+		root, model, tint, opts, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if twin else -1
+	)
+	if twin:
+		# a cheaper caster throws the shadow: the tree's far model, else a coarse LOD of itself
+		var far: String = model + "_far"
+		if ResourceLoader.exists(DIR + far + ".glb"):
+			_add_parts(
+				root, far, tint, opts, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			)
+		else:
+			var n0: int = root.get_child_count()
+			_add_parts(
+				root, model, tint, opts, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			)
+			for k in range(n0, root.get_child_count()):
+				(root.get_child(k) as MeshInstance3D).lod_bias = SHADOW_TWIN_LOD_BIAS
+	return root
+
+
+## MeshInstance3D per part of `model` under `root`; `cast` overrides the shadow setting (-1: from
+## opts).
+static func _add_parts(
+	root: Node3D, model: String, tint: Color, opts: Dictionary, cast: int
+) -> void:
 	for p: Dictionary in parts(model):
 		var mi := MeshInstance3D.new()
 		var mesh: Mesh = p["mesh"]
@@ -220,10 +260,11 @@ static func make_node(model: String, xf: Transform3D, opts: Dictionary = {}) -> 
 			mi.set_surface_override_material(s, material(model, mesh, s, tint, opts))
 		if not opts.get("shadow", true):
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if cast >= 0:
+			mi.cast_shadow = cast as GeometryInstance3D.ShadowCastingSetting
 		if KEEP_LOD.has(model):
 			mi.lod_bias = KEEP_LOD[model]
 		root.add_child(mi)
-	return root
 
 
 ## One MultiMeshInstance3D per part for all `xforms`. opts as make_node plus

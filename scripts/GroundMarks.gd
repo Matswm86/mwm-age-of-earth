@@ -82,6 +82,32 @@ func add(pos: Vector3, n: Vector3, r: float, col: Color, mode: float) -> void:
 	count += 1
 
 
+## add() for flat ground (normal straight up), without the per-mark cross products: the same
+## buffer values add() writes for n = Vector3.UP (Units: one disc per unit per frame).
+func add_flat(x: float, y: float, z: float, r: float, col: Color, mode: float) -> void:
+	if count >= MAX_MARKS:
+		return
+	var o: int = count * 20
+	_buf[o] = -r
+	_buf[o + 1] = 0.0
+	_buf[o + 2] = 0.0
+	_buf[o + 3] = x
+	_buf[o + 4] = 0.0
+	_buf[o + 5] = r
+	_buf[o + 6] = 0.0
+	_buf[o + 7] = y + 0.05
+	_buf[o + 8] = 0.0
+	_buf[o + 9] = 0.0
+	_buf[o + 10] = -r
+	_buf[o + 11] = z
+	_buf[o + 12] = col.r
+	_buf[o + 13] = col.g
+	_buf[o + 14] = col.b
+	_buf[o + 15] = col.a
+	_buf[o + 16] = mode
+	count += 1
+
+
 func finish() -> void:
 	multimesh.buffer = _buf
 	multimesh.visible_instance_count = count

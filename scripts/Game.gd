@@ -15,6 +15,8 @@ signal building_placed(index: int)
 signal building_finished(index: int)
 signal unit_trained(unit: int)
 signal tech_finished(id: String)
+## A player order (kind: "move", "gather", "build"); Sfx answers with a call.
+signal ordered(kind: String, ids: PackedInt32Array)
 
 enum Job { IDLE, MOVE, GO_GATHER, GATHER, GO_DROP, DROP, GO_BUILD, BUILD }
 
@@ -220,6 +222,7 @@ func order_move(ids: PackedInt32Array, goal: Vector2) -> void:
 	units.order_move(ids, ff)
 	for i in ids:
 		_set_job(i, Job.MOVE, -1)
+	ordered.emit("move", ids)
 
 
 func order_gather(ids: PackedInt32Array, node_i: int) -> void:
@@ -230,12 +233,14 @@ func order_gather(ids: PackedInt32Array, node_i: int) -> void:
 		if carry_amt[i] > 0.0 and carry_res[i] != nd.res:
 			carry_amt[i] = 0.0
 		_go_gather(i, node_i)
+	ordered.emit("gather", ids)
 
 
 func order_build(ids: PackedInt32Array, b_i: int) -> void:
 	for i in ids:
 		if units.team[i] == PLAYER:
 			_go_build(i, b_i)
+	ordered.emit("build", ids)
 
 
 func stop_units(ids: PackedInt32Array) -> void:

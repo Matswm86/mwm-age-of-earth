@@ -22,12 +22,16 @@ uniform float wind = 0.12;
 uniform vec3 translucency : source_color = vec3(0.45, 0.5, 0.2);
 // canopy fade (DESIGN 7.5): xyz = a player unit's chest, w = 1 when used. Leaves on the line of
 // sight from the camera to a unit dither out to ~25 %, so units under a crown stay readable.
+// Solved per vertex (leaf cards are small; per pixel the 16-point loop ran for every leaf
+// fragment, overdraw included, the costliest part of the crown on a phone GPU).
 uniform vec4 reveal[16];
+uniform int reveal_count = 16;
 uniform float reveal_r = 1.6;
 
 varying float inner;
 varying float crown_y;
 varying vec3 leaf_w;
+varying float hide;
 
 void vertex() {
 	vec3 d = (VERTEX - crown_centre) / crown_radius;
@@ -36,6 +40,17 @@ void vertex() {
 	leaf_w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	NORMAL = normalize(mix(NORMAL, normalize(d * crown_radius), bend));
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 cam = CAMERA_POSITION_WORLD;
+	hide = 0.0;
+	for (int i = 0; i < reveal_count; i++) {
+		if (reveal[i].w < 0.5) {
+			continue;
+		}
+		vec3 seg = reveal[i].xyz - cam;
+		float k = clamp(dot(wp - cam, seg) / dot(seg, seg), 0.0, 1.0);
+		float d = length(wp - (cam + seg * k));
+		hide = max(hide, (1.0 - smoothstep(reveal_r * 0.6, reveal_r, d)) * step(k, 0.985));
+	}
 	float top = crown_centre.y + crown_radius.y;
 	float h = clamp(VERTEX.y / max(top, 0.1), 0.0, 1.0);
 	float s = sin(TIME * 1.1 + wp.x * 0.13 + wp.z * 0.09) + 0.45 * sin(TIME * 2.7 + wp.z * 0.6);
@@ -49,18 +64,6 @@ void fragment() {
 		NORMAL = -NORMAL;
 	}
 	vec4 t = texture(albedo_tex, UV) * albedo_col;
-	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec3 cam = CAMERA_POSITION_WORLD;
-	float hide = 0.0;
-	for (int i = 0; i < 16; i++) {
-		if (reveal[i].w < 0.5) {
-			continue;
-		}
-		vec3 seg = reveal[i].xyz - cam;
-		float k = clamp(dot(wp - cam, seg) / dot(seg, seg), 0.0, 1.0);
-		float d = length(wp - (cam + seg * k));
-		hide = max(hide, (1.0 - smoothstep(reveal_r * 0.6, reveal_r, d)) * step(k, 0.985));
-	}
 	// ordered 4x4 dither keeps ~25 % of the leaves where hidden
 	ivec2 q = ivec2(FRAGCOORD.xy) % 4;
 	float bayer = float((q.x * 4 + q.y * 7) % 16) / 16.0;

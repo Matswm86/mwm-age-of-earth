@@ -9,6 +9,8 @@ on:
 env:
   GODOT_VERSION: 4.6.2
   EXPORT_NAME: mwm-age-of-earth
+  # Side-by-side A/B build on the Forward+ renderer (own package, installs next to the main APK)
+  FPLUS_NAME: mwm-age-of-earth-fplus
 
 permissions:
   contents: write
@@ -137,17 +139,40 @@ jobs:
           echo "--- export templates dir ---"
           ls -la "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/" || true
 
-      - name: Export Android debug APK
+      - name: Export Android debug APK (Mobile renderer)
         run: |
           set -e
+          grep -n 'rendering_method' project.godot
           ./godot --headless --verbose --export-debug "Android" "${EXPORT_NAME}.apk" 2>&1 | tee export.log
           ls -la "${EXPORT_NAME}.apk"
+
+      # The repo stays on the Mobile renderer; only this CI copy switches to Forward+ for the
+      # A/B APK (preset "Android F+", package no.mwmai.ageofearth.fplus). The game reads the
+      # renderer at runtime (WorldLook.is_forward_plus) and turns SSAO/SSIL/SSR/volumetric on.
+      - name: Switch the CI checkout to Forward+ for the A/B APK
+        run: |
+          set -e
+          sed -i \
+            -e 's/^renderer\/rendering_method="mobile"$/renderer\/rendering_method="forward_plus"/' \
+            -e 's/^renderer\/rendering_method.mobile="mobile"$/renderer\/rendering_method.mobile="forward_plus"/' \
+            -e 's/^config\/features=PackedStringArray("4.6", "Mobile")$/config\/features=PackedStringArray("4.6", "Forward Plus")/' \
+            project.godot
+          grep -n 'rendering_method\|config/features' project.godot
+          test "$(grep -c 'forward_plus' project.godot)" -eq 2
+
+      - name: Export Android debug APK (Forward+ A/B)
+        run: |
+          set -e
+          ./godot --headless --verbose --export-debug "Android F+" "${FPLUS_NAME}.apk" 2>&1 | tee export_fplus.log
+          ls -la "${FPLUS_NAME}.apk"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.EXPORT_NAME }}-apk
-          path: ${{ env.EXPORT_NAME }}.apk
+          path: |
+            ${{ env.EXPORT_NAME }}.apk
+            ${{ env.FPLUS_NAME }}.apk
           retention-days: 30
 
       - name: Update rolling "latest" pre-release (main pushes)
@@ -164,7 +189,12 @@ jobs:
             **Install on phone:** download `${{ env.EXPORT_NAME }}.apk`, open it,
             allow "Install from this source" if Android prompts. If reinstalling
             over a previous build with a different signature, uninstall first.
-          files: ${{ env.EXPORT_NAME }}.apk
+
+            `${{ env.FPLUS_NAME }}.apk` is the same commit on the Forward+ renderer
+            ("Age of Earth F+", its own package), for a side-by-side speed and look test.
+          files: |
+            ${{ env.EXPORT_NAME }}.apk
+            ${{ env.FPLUS_NAME }}.apk
           fail_on_unmatched_files: true
 
       - name: Create tagged release (vX.Y.Z tags)

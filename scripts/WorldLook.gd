@@ -1,14 +1,13 @@
 class_name WorldLook
 extends RefCounted
 
-## Lighting recipe for the Rift Lake, Forward+ renderer (owner 2026-10-11: graphics first, the
-## visual target is a bright, high-key, saturated realistic RTS look). Poly Haven
-## qwantani_late_afternoon sky for ambient and reflections, one warm golden-hour sun at 30 deg
-## (SW, so the faces the camera sees are lit and shadows fall away up the screen), cool sky fill,
-## ACES tonemap with a grade (contrast up, saturation up), SSAO + SSIL for contact darkening and
-## bounce, SSR for the lake, light volumetric haze that catches the sun, glow on highlights.
-## set_quality() turns the expensive effects off for the Low preset. Static builders, so any
-## scene can share the look.
+## Lighting recipe for the Rift Lake, Mobile renderer (Forward+ only in the A/B APK) (owner
+## 2026-10-11: graphics first, the visual target is a bright, high-key, saturated realistic RTS
+## look). Poly Haven qwantani_late_afternoon sky for ambient and reflections, one warm golden-hour
+## sun at 30 deg (SW, so the faces the camera sees are lit and shadows fall away up the screen),
+## cool sky fill, ACES tonemap with a grade (contrast up, saturation up), glow on highlights; on
+## Forward+ also SSAO + SSIL, SSR and volumetric haze. set_quality() turns the expensive effects
+## off for the Low preset. Static builders, so any scene can share the look.
 
 const SKY_PATH: String = "res://assets/sky/qwantani_late_afternoon_4k.hdr"
 const SUN_ELEV_DEG: float = 30.0
@@ -20,6 +19,15 @@ const SUN_ENERGY: float = 3.0
 ## turn it by the same amount the sun moved.
 const SKY_YAW_DEG: float = 138.0 - (258.0 - SUN_AZ_DEG)
 const HAZE := Color(0.80, 0.78, 0.70)
+## Mobile renderer stand-in for the volumetric haze: depth fog a little denser, more sun scatter.
+const MOBILE_FOG_DENSITY: float = 0.0006
+const MOBILE_SUN_SCATTER: float = 0.4
+## The Mobile renderer lands ~15 % darker than Forward+ with the same settings (no SSIL bounce,
+## its own colour pipeline; look_stats lum 0.50 -> 0.42 on the camp): exposure and a little more
+## sky ambient bring it back.
+const AMBIENT: float = 0.42
+const MOBILE_AMBIENT: float = 0.5
+const MOBILE_EXPOSURE: float = 1.25
 
 
 ## Unit vector from the ground toward the sun.
@@ -43,7 +51,7 @@ static func make_environment() -> Environment:
 	env.background_energy_multiplier = 1.0
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_sky_contribution = 1.0
-	env.ambient_light_energy = 0.42
+	env.ambient_light_energy = AMBIENT
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
@@ -91,13 +99,27 @@ static func make_environment() -> Environment:
 	return env
 
 
-## High: every Forward+ effect on. Low (32-bit tablet, or a slow phone): only the cheap ones.
+## True on the Forward+ build (the side-by-side A/B APK); the main APK runs the Mobile renderer.
+static func is_forward_plus() -> bool:
+	return RenderingServer.get_current_rendering_method() == "forward_plus"
+
+
+## High on Forward+: every screen-space effect on. High on Mobile (no SSAO, SSIL, SSR or
+## volumetric fog there): contact darkening comes from the terrain's sky_ao and contact mask, the
+## crown occlusion in foliage.gdshader and the unit discs; the haze is depth fog with sun scatter,
+## a little denser to stand in for the volumetric haze. Low: only the cheap ones.
 static func set_quality(env: Environment, high: bool) -> void:
-	env.ssao_enabled = high
-	env.ssil_enabled = high
-	env.ssr_enabled = high
-	env.volumetric_fog_enabled = high
+	var fplus: bool = is_forward_plus()
+	env.ssao_enabled = high and fplus
+	env.ssil_enabled = high and fplus
+	env.ssr_enabled = high and fplus
+	env.volumetric_fog_enabled = high and fplus
 	env.fog_enabled = true
+	env.fog_density = 0.00025 if fplus else MOBILE_FOG_DENSITY
+	env.fog_sun_scatter = 0.25 if fplus else MOBILE_SUN_SCATTER
+	env.glow_enabled = high
+	env.ambient_light_energy = AMBIENT if fplus else MOBILE_AMBIENT
+	env.tonemap_exposure = 1.0 if fplus else MOBILE_EXPOSURE
 
 
 ## Shadow distance 90 m (fit_shadows scales it), 2 splits blended, soft-filtered edges.
@@ -116,6 +138,10 @@ static func make_sun(shadows: bool = true) -> DirectionalLight3D:
 	# the distance with the camera height
 	# (fit_shadows) so the far zoom keeps its tree shadows and the default view stays sharp
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	if not is_forward_plus():
+		# Mobile: one orthogonal map draws every caster once instead of twice; at the RTS pitch the
+		# units sit in the far split anyway, so the sharpness there is the same
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 90.0
 	sun.directional_shadow_split_1 = 0.3
 	sun.directional_shadow_blend_splits = true

@@ -9,8 +9,13 @@ extends Node3D
 ## and selection rings. Enemy units outside the player's sight are left out (fog of war) unless
 ## reveal_all is set (bench).
 
-const HASH_CELL_M: float = 2.0
+## Separation grid cell: at least 2 x SEPARATION_DIST, so every neighbour within reach sits in the
+## 2 x 2 cells on the unit's side of its cell (4 cells searched instead of 9).
+const HASH_CELL_M: float = 2.4
 const HASH_SIDE: int = 256
+## Camera heights below this draw the full 6k-triangle body; above it (the default camera at 21 m
+## and every zoom-out) the ~1.5k LOD, where a unit is 40-60 px tall.
+const FULL_LOD_H: float = 15.0
 ## 3x4 transform + INSTANCE_CUSTOM (no colours) per instance.
 const FLOATS: int = 16
 const BODY_MODEL: String = "australopith"
@@ -60,9 +65,16 @@ var orders: Array[FlowField] = []
 
 var _clip_rg := PackedVector2Array()
 var _mm: MultiMesh
+## Shadow-only copy of the crowd on the low LOD (same buffer).
+var _mm_shadow: MultiMesh
+var _lod_mesh: Mesh
+var _quality: int = 0
+## Disc colour per team (alpha scaled by luminance), built once.
+var _disc_cols: Array[Color] = []
 var _buf := PackedFloat32Array()
 var _grid_head := PackedInt32Array()
 var _grid_next := PackedInt32Array()
+var _push := PackedVector2Array()
 var _rng := RandomNumberGenerator.new()
 
 
@@ -91,16 +103,36 @@ func setup(t: RtsTerrain, f: FogOfWar, gm: GroundMarks) -> void:
 	mmi.name = "UnitsMM"
 	mmi.multimesh = _mm
 	mmi.material_override = body.material
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
+	# LODs: the 6k body only at close zoom; shadows always from the ~1.5k LOD
+	body.make_lods()
+	_lod_mesh = body.lods[body.lods.size() - 1] if body.lods.size() > 0 else body.mesh
+	_mm_shadow = MultiMesh.new()
+	_mm_shadow.transform_format = MultiMesh.TRANSFORM_3D
+	_mm_shadow.use_custom_data = true
+	_mm_shadow.mesh = _lod_mesh
+	_mm_shadow.instance_count = SpikeConfig.MAX_UNITS
+	_mm_shadow.visible_instance_count = 0
+	_mm_shadow.custom_aabb = _mm.custom_aabb
+	var smi := MultiMeshInstance3D.new()
+	smi.name = "UnitsShadow"
+	smi.multimesh = _mm_shadow
+	smi.material_override = body.material
+	smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	add_child(smi)
+	for tc: Color in SpikeConfig.TEAM_COLOURS:
+		# light team colours (kaolin) at full strength read as white plates: scale by luminance
+		_disc_cols.append(Color(tc.r, tc.g, tc.b, 0.34 * (1.15 - 0.6 * tc.get_luminance())))
 	_buf.resize(SpikeConfig.MAX_UNITS * FLOATS)
 	_buf.fill(0.0)
 	_grid_head.resize(HASH_SIDE * HASH_SIDE)
 	_rng.seed = 5
 
 
-## Quality preset hook (the VAT body has one mesh; Low only drops shadows and resolution).
-func set_mesh_quality(_q: int) -> void:
-	pass
+## Quality preset hook: Low (q 1) never draws the full body, only the ~1.5k LOD.
+func set_mesh_quality(q: int) -> void:
+	_quality = q
 
 
 ## Flat annulus mesh kept for callers that want a standalone ring (unused by the game HUD).
@@ -267,28 +299,79 @@ func set_selection(ids: PackedInt32Array) -> void:
 
 
 func tick(dt: float) -> void:
+	# hot loop (210 units x 30 Hz): terrain lookups are inlined (height_at, cell_of,
+	# is_blocked_at), the flow-field step is cached per cell, separation searches 2 x 2 cells
 	var blk: PackedByteArray = terrain.blocked
+	var hts: PackedFloat32Array = terrain.heights
+	var n_side: int = terrain.n_side
+	var inv_hs: float = 1.0 / SpikeConfig.HEIGHT_SPACING
+	var h_max: float = n_side - 1.001
 	var n_nav: int = SpikeConfig.NAV_CELLS
+	var nav_hi: int = n_nav - 1
 	var cm: float = SpikeConfig.NAV_CELL_M
+	var inv_cm: float = 1.0 / cm
+	var map_m: float = SpikeConfig.MAP_SIZE
 	var sep: float = SpikeConfig.SEPARATION_DIST
 	var sep2: float = sep * sep
 	var speed: float = SpikeConfig.UNIT_SPEED
 	var push_k: float = SpikeConfig.SEPARATION_PUSH
+	var max_step: float = speed * 1.5 * dt
 	var turn: float = minf(1.0, dt * SpikeConfig.TURN_RATE)
+	var walk_step: float = dt * 6.0
 	var inv_hash: float = 1.0 / HASH_CELL_M
-	# spatial grid (2 m cells), rebuilt every tick; fill() is native and cheap
+	var hs_hi: int = HASH_SIDE - 1
+	# spatial grid, rebuilt every tick; fill() is native and cheap
 	_grid_head.fill(-1)
 	for i in count:
 		var p: Vector2 = pos[i]
 		var key: int = (
-			clampi(int(p.y * inv_hash), 0, HASH_SIDE - 1) * HASH_SIDE
-			+ clampi(int(p.x * inv_hash), 0, HASH_SIDE - 1)
+			clampi(int(p.y * inv_hash), 0, hs_hi) * HASH_SIDE
+			+ clampi(int(p.x * inv_hash), 0, hs_hi)
 		)
 		_grid_next[i] = _grid_head[key]
 		_grid_head[key] = i
 		prev_pos[i] = p
 		prev_yaw[i] = yaw[i]
 		prev_hgt[i] = hgt[i]
+	# arrivals first, so the touch rule below sees who has stopped
+	for i in count:
+		if moving[i] == 1 and (goal[i] - pos[i]).length() < arrive[i]:
+			moving[i] = 0
+	# separation, every close pair once (j > i, both sides pushed): the grid cell is >= 2 x sep, so
+	# every neighbour within reach sits in the 2 x 2 cells on my side of my cell. Arrival
+	# spreading: a moving unit touching an arrived unit of the same order near the goal stops.
+	_push.resize(count)
+	_push.fill(Vector2.ZERO)
+	for i in count:
+		var p: Vector2 = pos[i]
+		var fx: float = p.x * inv_hash
+		var fz: float = p.y * inv_hash
+		var hx: int = int(fx)
+		var hz: int = int(fz)
+		var x0: int = maxi(hx - 1 if fx - hx < 0.5 else hx, 0)
+		var z0: int = maxi(hz - 1 if fz - hz < 0.5 else hz, 0)
+		var x1: int = mini(x0 + 2, HASH_SIDE)
+		var z1: int = mini(z0 + 2, HASH_SIDE)
+		for gz in range(z0, z1):
+			var row: int = gz * HASH_SIDE
+			for gx in range(x0, x1):
+				var j: int = _grid_head[row + gx]
+				while j > i:
+					var dv: Vector2 = p - pos[j]
+					var dd: float = dv.length_squared()
+					if dd < sep2:
+						if dd < 0.0001:
+							dv = Vector2(cos(float(i)), sin(float(i)))
+							dd = 1.0
+						var dl: float = sqrt(dd)
+						var f: Vector2 = dv / dl * (sep - dl)
+						_push[i] += f
+						_push[j] -= f
+						if moving[i] != moving[j] and orders[i] == orders[j] and goal[i] == goal[j]:
+							var m: int = i if moving[i] == 1 else j
+							if pos[m].distance_to(goal[m]) < arrive[m] * 2.5:
+								moving[m] = 0
+					j = _grid_next[j]
 	for i in count:
 		var p: Vector2 = pos[i]
 		var v := Vector2.ZERO
@@ -297,68 +380,63 @@ func tick(dt: float) -> void:
 		if is_moving:
 			var to_t: Vector2 = goal[i] - p
 			var d: float = to_t.length()
-			if d < arrive[i]:
-				moving[i] = 0
-				is_moving = false
-			else:
-				var dir: Vector2 = to_t / d
-				var c: int = cell[i]
-				if ff != null and ff.is_built and d > 6.0 and ff.dist[c] < FlowField.UNREACHED:
-					var nc: int = ff.next_cell(c, blk)
-					if nc >= 0:
-						var q := Vector2(
-							((nc & (n_nav - 1)) + 0.5) * cm,
-							((nc >> SpikeConfig.NAV_SHIFT) + 0.5) * cm
-						)
-						dir = (q - p).normalized()
-				v = dir * speed
-		# separation (and arrival spreading: touching an arrived unit of the same order stops me)
-		var push := Vector2.ZERO
-		var hx: int = int(p.x * inv_hash)
-		var hz: int = int(p.y * inv_hash)
-		for gz in range(maxi(hz - 1, 0), mini(hz + 2, HASH_SIDE)):
-			for gx in range(maxi(hx - 1, 0), mini(hx + 2, HASH_SIDE)):
-				var j: int = _grid_head[gz * HASH_SIDE + gx]
-				while j >= 0:
-					if j != i:
-						var dv: Vector2 = p - pos[j]
-						var dd: float = dv.length_squared()
-						if dd < sep2:
-							if dd < 0.0001:
-								dv = Vector2(cos(float(i)), sin(float(i)))
-								dd = 1.0
-							var dl: float = sqrt(dd)
-							push += dv / dl * (sep - dl)
-							if (
-								is_moving
-								and moving[j] == 0
-								and orders[j] == ff
-								and goal[j] == goal[i]
-								and p.distance_to(goal[i]) < arrive[i] * 2.5
-							):
-								moving[i] = 0
-								is_moving = false
-								v = Vector2.ZERO
-					j = _grid_next[j]
+			var dir: Vector2 = to_t / d
+			if ff != null and ff.is_built and d > 6.0:
+				var nc: int = ff.next_cached(cell[i], blk)
+				if nc >= 0:
+					var q := Vector2(
+						((nc & nav_hi) + 0.5) * cm, ((nc >> SpikeConfig.NAV_SHIFT) + 0.5) * cm
+					)
+					dir = (q - p).normalized()
+			v = dir * speed
+		var push: Vector2 = _push[i]
+		if v == Vector2.ZERO and push == Vector2.ZERO:
+			# standing still and untouched: nothing moves, only the walk blend settles
+			walk[i] = move_toward(walk[i], 0.0, walk_step)
+			continue
 		var step: Vector2 = (v + push * push_k) * dt
-		var max_step: float = speed * 1.5 * dt
-		if step.length() > max_step:
+		if step.length_squared() > max_step * max_step:
 			step = step.normalized() * max_step
 		var np: Vector2 = p + step
-		if terrain.is_blocked_at(np):
-			if not terrain.is_blocked_at(Vector2(np.x, p.y)):
+		if (
+			np.x < 0.0
+			or np.y < 0.0
+			or np.x >= map_m
+			or np.y >= map_m
+			or blk[mini(int(np.y * inv_cm), nav_hi) * n_nav + mini(int(np.x * inv_cm), nav_hi)] == 1
+		):
+			if not _blocked_at(Vector2(np.x, p.y), blk, inv_cm, nav_hi, map_m):
 				np = Vector2(np.x, p.y)
-			elif not terrain.is_blocked_at(Vector2(p.x, np.y)):
+			elif not _blocked_at(Vector2(p.x, np.y), blk, inv_cm, nav_hi, map_m):
 				np = Vector2(p.x, np.y)
 			else:
 				np = p
 		pos[i] = np
-		cell[i] = terrain.cell_of(np)
-		hgt[i] = terrain.height_at(np.x, np.y)
+		cell[i] = (
+			clampi(int(np.y * inv_cm), 0, nav_hi) * n_nav + clampi(int(np.x * inv_cm), 0, nav_hi)
+		)
+		# bilinear height (RtsTerrain.height_at inlined)
+		var hx2: float = clampf(np.x * inv_hs, 0.0, h_max)
+		var hz2: float = clampf(np.y * inv_hs, 0.0, h_max)
+		var ix: int = int(hx2)
+		var iz: int = int(hz2)
+		var tx: float = hx2 - ix
+		var k: int = iz * n_side + ix
+		var ha: float = hts[k] + (hts[k + 1] - hts[k]) * tx
+		var hb: float = hts[k + n_side] + (hts[k + n_side + 1] - hts[k + n_side]) * tx
+		hgt[i] = ha + (hb - ha) * (hz2 - iz)
 		if is_moving and v.length_squared() > 0.01:
 			yaw[i] = lerp_angle(yaw[i], atan2(v.x, v.y), turn)
-		var want: float = 1.0 if is_moving else 0.0
-		walk[i] = move_toward(walk[i], want, dt * 6.0)
+		walk[i] = move_toward(walk[i], 1.0 if is_moving else 0.0, walk_step)
+
+
+## RtsTerrain.is_blocked_at with the tick's locals (off the map counts as blocked).
+static func _blocked_at(
+	p: Vector2, blk: PackedByteArray, inv_cm: float, hi: int, map_m: float
+) -> bool:
+	if p.x < 0.0 or p.y < 0.0 or p.x >= map_m or p.y >= map_m:
+		return true
+	return blk[mini(int(p.y * inv_cm), hi) * (hi + 1) + mini(int(p.x * inv_cm), hi)] == 1
 
 
 ## Chests of up to `n` units of team `t` (w = 1), padded with unused entries (w = 0), for the
@@ -386,29 +464,31 @@ func is_seen(i: int) -> bool:
 ## last two ticks.
 func render(alpha: float) -> void:
 	var vis: int = 0
-	var colours: Array[Color] = SpikeConfig.TEAM_COLOURS
+	var show_all: bool = reveal_all or fog_off
+	var fb: PackedByteArray = fog.bytes
+	var us: float = SpikeConfig.UNIT_DRAW_SCALE
 	for i in count:
-		if not is_seen(i):
-			continue
 		var t: int = team[i]
+		# is_seen() inlined
+		if t != 0 and not show_all and fb[cell[i]] != 255:
+			continue
 		var p: Vector2 = prev_pos[i].lerp(pos[i], alpha)
 		var y: float = lerpf(prev_hgt[i], hgt[i], alpha)
 		var a: float = lerp_angle(prev_yaw[i], yaw[i], alpha)
-		var cs: float = cos(a)
-		var sn: float = sin(a)
+		var cs: float = cos(a) * us
+		var sn: float = sin(a) * us
 		var o: int = vis * FLOATS
-		var us: float = SpikeConfig.UNIT_DRAW_SCALE
-		_buf[o] = cs * us
+		_buf[o] = cs
 		_buf[o + 1] = 0.0
-		_buf[o + 2] = sn * us
+		_buf[o + 2] = sn
 		_buf[o + 3] = p.x
 		_buf[o + 4] = 0.0
 		_buf[o + 5] = us
 		_buf[o + 6] = 0.0
 		_buf[o + 7] = y
-		_buf[o + 8] = -sn * us
+		_buf[o + 8] = -sn
 		_buf[o + 9] = 0.0
-		_buf[o + 10] = cs * us
+		_buf[o + 10] = cs
 		_buf[o + 11] = p.y
 		var c: int = C_RUN if walk[i] > 0.35 else clip[i]
 		var rg: Vector2 = _clip_rg[c]
@@ -417,17 +497,26 @@ func render(alpha: float) -> void:
 		_buf[o + 14] = clip_t0[i] if c != C_RUN else float(i) * 0.37
 		_buf[o + 15] = float(t) + 4.0 * selected[i]
 		vis += 1
-		var g3 := Vector3(p.x, y, p.y)
 		# flat discs: the ground is gentle and a normal per unit per frame cost ~1 ms of CPU
-		var n: Vector3 = Vector3.UP
-		var tc: Color = colours[t]
-		# light team colours (kaolin) at full strength read as white plates: scale by luminance
-		var disc_a: float = 0.34 * (1.15 - 0.6 * tc.get_luminance())
-		marks.add(g3, n, DISC_R, Color(tc.r, tc.g, tc.b, disc_a), GroundMarks.MODE_DISC)
+		marks.add_flat(p.x, y, p.y, DISC_R, _disc_cols[t], GroundMarks.MODE_DISC)
 		if selected[i] == 1:
 			var k: float = clampf((anim_time - sel_time[i]) / 0.12, 0.0, 1.0)
-			marks.add(g3, n, RING_R * k, GameConfig.SELECT, GroundMarks.MODE_RING)
+			marks.add_flat(p.x, y, p.y, RING_R * k, GameConfig.SELECT, GroundMarks.MODE_RING)
+	# body LOD: the full mesh only at close zoom on High (MultiMesh LOD cannot pick per unit)
+	var cam := get_viewport().get_camera_3d() as RtsCamera
+	var full: bool = _quality == 0 and cam != null and cam.height < FULL_LOD_H
+	var want: Mesh = body.mesh if full else _lod_mesh
+	if _mm.mesh != want:
+		_mm.mesh = want
+	mesh_tris = body.triangles if full else _lod_tris()
 	_mm.buffer = _buf
 	_mm.visible_instance_count = vis
+	_mm_shadow.buffer = _buf
+	_mm_shadow.visible_instance_count = vis
 	visible_count = vis
 	body.material.set_shader_parameter("anim_time", anim_time)
+
+
+func _lod_tris() -> int:
+	var n: int = body.lod_triangles.size()
+	return body.lod_triangles[n - 1] if n > 0 else body.triangles

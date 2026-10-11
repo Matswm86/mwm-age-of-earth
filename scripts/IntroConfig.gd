@@ -91,12 +91,13 @@ const CUES: Dictionary = {
 	"handover": 93.6,
 }
 
-# --- title cards (owner 2026-10-11): [fade in start, fully in, fade out start, gone] ---
+# --- title cards (owner 2026-10-11: one date only, 4.2 Ma):
+# Each Vector4 = [fade in start, fully in, fade out start, gone] in seconds.
 const TITLE_GLOBE: Vector4 = Vector4(8.0, 10.0, 18.0, 20.0)
 const TITLE_DIVE: Vector4 = Vector4(45.0, 47.0, 56.0, 58.0)
-const TITLE_GLOBE_TEXT: String = "About 7 million years ago"
-const TITLE_DIVE_TEXT: String = "About 4.2 million years ago"
-const TITLE_DIVE_SUB: String = "Lake Lonyumun, northern Kenya"
+const TITLE_GLOBE_TEXT: String = "About 4.2 million years ago"
+const TITLE_DIVE_TEXT: String = "Lake Lonyumun"
+const TITLE_DIVE_SUB: String = "northern Kenya"
 
 # --- look ---
 const FOV: float = 40.0

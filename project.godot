@@ -13,12 +13,13 @@ config_version=5
 config/name="Age of Earth"
 config/description="Tech spike (go/no-go): 210 instanced animated units, flow field, fog of war, RTS camera. Not the game."
 run/main_scene="res://scenes/Intro.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.6", "Mobile")
 config/quit_on_go_back=false
 
 [autoload]
 
 PerfOverlay="*res://scripts/PerfOverlay.gd"
+Sfx="*res://scripts/Sfx.gd"
 
 [display]
 
@@ -34,8 +35,8 @@ pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
-renderer/rendering_method.mobile="forward_plus"
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
 rendering_device/fallback_to_opengl3=true
 textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=2048
@@ -48,4 +49,6 @@ environment/volumetric_fog/volume_size=96
 environment/volumetric_fog/volume_depth=48
 environment/screen_space_reflection/roughness_quality=1
 mesh_lod/lod_change/threshold_pixels=6.0
+camera/depth_of_field/depth_of_field_bokeh_shape=0
+camera/depth_of_field/depth_of_field_bokeh_quality=0
 environment/defaults/default_clear_color=Color(0.02, 0.02, 0.03, 1)

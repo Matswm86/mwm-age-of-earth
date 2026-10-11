@@ -3,9 +3,9 @@ extends Node3D
 
 ## Opening intro (GDD 11.1, Wayfarer GDD 4.3b): one unbroken camera move, no input.
 ## A pale blue dot beside the sun -> the planet as a crescent that turns to a sunlit disc ->
-## the Earth of ~7 million years ago (title card; edited Blue Marble, tools/intro/bake_paleo.py)
+## the Earth of ~4.2 million years ago (title card; edited Blue Marble, tools/intro/bake_paleo.py)
 ## with drifting clouds, a scattering atmosphere and ocean glint -> a dive onto Kanapoi by Lake
-## Lonyumun, ~4.2 million years ago (second title card) -> through the cloud deck into a
+## Lonyumun (second title card: the place) -> through the cloud deck into a
 ## golden-hour glide down to the Home Tree, where a hominin wakes and climbs down to its band
 ## (IntroLocal) -> Main's opening RTS camera pose -> cross-fade into scenes/Main.tscn.
 ## Title cards: IntroTitles. Every number lives in IntroConfig / IntroLocal.

@@ -31,6 +31,7 @@ var marks: GroundMarks
 ## Rings, markers and footprints that must not be cut by the terrain (no depth test).
 var overlay: GroundMarks
 var hud: Hud
+var auto_quality: AutoQuality
 var icons: IconBaker
 var bench: Bench
 ## True once the bench has replaced the match with crowds (no economy ticks).
@@ -128,7 +129,7 @@ func _ready() -> void:
 	bench.main = self
 	add_child(bench)
 	_add_buttons()
-	apply_quality(0)
+	auto_quality = AutoQuality.attach(self)
 	set_speed(1.0)
 	PerfOverlay.set_ui_visible(false)
 	_on_resources()
@@ -235,7 +236,7 @@ func _connect_game() -> void:
 func _add_buttons() -> void:
 	PerfOverlay.add_button("preset", "", _next_preset)
 	PerfOverlay.add_button("speed", "", func() -> void: set_speed(1.5 if speed < 1.25 else 1.0))
-	PerfOverlay.add_button("quality", "", func() -> void: apply_quality((quality + 1) % 2))
+	PerfOverlay.add_button("quality", "", func() -> void: auto_quality.cycle())
 	PerfOverlay.add_button("bench", "Bench all", func() -> void: _on_bench())
 	PerfOverlay.add_button("select", "Select all", select_all)
 	PerfOverlay.add_button("fog", "Fog: on", func() -> void: set_fog(not fog_on))
@@ -296,7 +297,7 @@ func apply_quality(q: int) -> void:
 	reeds.set_quality(float(d["grass"]))
 	cam.apply()
 	units.set_mesh_quality(q)
-	PerfOverlay.set_button_text("quality", "Quality: %s" % d["name"])
+	PerfOverlay.set_button_text("quality", AutoQuality.label(self))
 
 
 func select_all() -> void:

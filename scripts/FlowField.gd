@@ -3,10 +3,11 @@ extends RefCounted
 
 ## One move order: the integration field (cost to reach the target from every 4 m nav cell)
 ## over the 128 x 128 grid, 8 neighbours, straight cost 10 and diagonal 14, no corner cutting.
-## Units read the field and step toward the cheapest neighbour cell (see Units.gd), so the
-## direction field is never stored. build() is exact Dijkstra with a bucket queue (Dial) and runs
-## on a WorkerThreadPool task (Main.order_*); `is_built` turns true on the main thread when it is
-## done, and until then units walk straight at the target.
+## Units read the field and step toward the cheapest neighbour cell (see Units.gd); the step is
+## cached per cell on first use (next_cached), so only cells that units stand on are ever solved.
+## build() is exact Dijkstra with a bucket queue (Dial) and runs on a WorkerThreadPool task
+## (Main.order_*); `is_built` turns true on the main thread when it is done, and until then
+## units walk straight at the target.
 
 const UNREACHED: int = 1 << 30
 const DX: Array[int] = [1, -1, 0, 0, 1, 1, -1, -1]
@@ -17,6 +18,8 @@ const BUCKETS: int = 15
 var target: Vector2 = Vector2.ZERO
 var target_cell: int = 0
 var dist: PackedInt32Array = PackedInt32Array()
+## Cached next_cell() per cell: -2 not asked yet, -1 none (or unreached).
+var nxt: PackedInt32Array = PackedInt32Array()
 ## Units that still follow this order (set by Units when the order is given).
 var group_size: int = 1
 var arrive_r: float = 1.0
@@ -41,6 +44,8 @@ func build(blocked: PackedByteArray) -> void:
 	var total: int = n * n
 	dist.resize(total)
 	dist.fill(UNREACHED)
+	nxt.resize(total)
+	nxt.fill(-2)
 	# Dial's algorithm: 15 cyclic buckets (max edge cost 14 + 1), each a linked list of nodes in
 	# flat arrays, so every cell is expanded exactly once (exact Dijkstra, no heap).
 	var bucket_head := PackedInt32Array()
@@ -115,3 +120,12 @@ func next_cell(cell: int, blocked: PackedByteArray) -> int:
 			best_d = dist[nb]
 			best = nb
 	return best
+
+
+## next_cell() for a built field, cached per cell (main thread only), -1 when the cell is unreached.
+func next_cached(cell: int, blocked: PackedByteArray) -> int:
+	var v: int = nxt[cell]
+	if v == -2:
+		v = next_cell(cell, blocked) if dist[cell] < UNREACHED else -1
+		nxt[cell] = v
+	return v

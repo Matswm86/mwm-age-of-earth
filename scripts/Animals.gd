@@ -110,6 +110,15 @@ func hyena_pos() -> Vector2:
 	return Vector2.INF
 
 
+## Positions of one kind of animal (0 gazelle, 1 leopard, 2 hyena), for Sfx calls.
+func positions_of(kind: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for a in _a:
+		if int(a["kind"]) == kind:
+			out.append(a["pos"])
+	return out
+
+
 func tick(dt: float) -> void:
 	anim_time += dt
 	for a in _a:

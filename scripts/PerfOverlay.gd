@@ -23,6 +23,7 @@ var _result_box: PanelContainer
 var _panel: Control
 var _grid: GridContainer
 var _buttons: Dictionary = {}
+var _extra: Array[Control] = []
 var _touches: Dictionary = {}
 var _frames: PackedFloat32Array = PackedFloat32Array()
 var _cursor: int = 0
@@ -134,7 +135,16 @@ func is_over_ui(p: Vector2) -> bool:
 	for id: String in _buttons:
 		if (_buttons[id] as Button).get_global_rect().has_point(p):
 			return true
+	for c in _extra:
+		if c.visible and c.get_global_rect().has_point(p):
+			return true
 	return false
+
+
+## Extra menu control (Sfx volume panel): shown with the menu, counted by is_over_ui().
+func add_panel(c: Control) -> void:
+	_panel.add_child(c)
+	_extra.append(c)
 
 
 func show_result(text: String) -> void:

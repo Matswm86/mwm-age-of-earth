@@ -19,6 +19,10 @@ var fps: float = 15.0
 ## clip name -> [first frame, frames, loop 0/1]
 var clips: Dictionary = {}
 var triangles: int = 0
+## Lower-detail versions of `mesh` (same vertices, so the VAT ids in UV2 still hold), most
+## detailed first; see make_lods().
+var lods: Array[Mesh] = []
+var lod_triangles: PackedInt32Array = PackedInt32Array()
 
 
 static func load_model(model: String, paint: bool) -> VatModel:
@@ -78,6 +82,25 @@ static func _find_mesh(n: Node) -> MeshInstance3D:
 		if m != null:
 			return m
 	return null
+
+
+## Builds `lods` with Godot's mesh simplifier (the import LODs are not used by a MultiMesh: it
+## picks one LOD from its map-sized AABB). The body (5998 triangles) gives ~3k and ~1.5k.
+func make_lods() -> void:
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(0))
+	im.generate_lods(25.0, 60.0, [])
+	var arrays: Array = im.get_surface_arrays(0)
+	var mat: Material = mesh.surface_get_material(0)
+	for k in im.get_surface_lod_count(0):
+		var a: Array = arrays.duplicate()
+		var idx: PackedInt32Array = im.get_surface_lod_indices(0, k)
+		a[Mesh.ARRAY_INDEX] = idx
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+		m.surface_set_material(0, mat)
+		lods.append(m)
+		lod_triangles.append(int(idx.size() / 3.0))
 
 
 ## INSTANCE_CUSTOM.rg for a clip: (first frame, frames + 1000 x loop).
