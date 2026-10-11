@@ -1,0 +1,15 @@
+{
+ "vertices": 3664,
+ "rows_per_frame": 4,
+ "width": 2048,
+ "height": 32,
+ "fps": 15.0,
+ "body_height": 0.85,
+ "clips": {
+  "run": [
+   0,
+   8,
+   1
+  ]
+ }
+}

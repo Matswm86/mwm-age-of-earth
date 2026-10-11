@@ -1,0 +1,15 @@
+{
+ "vertices": 5142,
+ "rows_per_frame": 6,
+ "width": 2048,
+ "height": 1080,
+ "fps": 15.0,
+ "body_height": 1.25,
+ "clips": {
+  "idle": [
+   0,
+   180,
+   1
+  ]
+ }
+}

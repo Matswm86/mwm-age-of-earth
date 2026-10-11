@@ -151,6 +151,10 @@ func set_ui_visible(on: bool) -> void:
 	_panel.visible = on
 
 
+func is_ui_visible() -> bool:
+	return _panel.visible
+
+
 func p95_ms() -> float:
 	return _p95_ms
 

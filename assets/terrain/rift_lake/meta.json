@@ -1,0 +1,21 @@
+{
+ "preset": "turkana",
+ "centre_lon": 35.845,
+ "centre_lat": 3.88,
+ "projection": "transverse Mercator at centre",
+ "real_size_m": 5120.0,
+ "scale": "1:10 (horizontal and vertical)",
+ "game_size_m": 512.0,
+ "samples": 1025,
+ "game_m_per_sample": 0.5,
+ "h_min": 34.40317788728619,
+ "h_max": 41.0068467983669,
+ "water_level": 36.239999999999995,
+ "frame": "row 0 = north, col 0 = west; Godot: x = col * spacing - 256, z = row * spacing - 256 (+z south)",
+ "lake_fraction": 0.21678334324806664,
+ "land_relief_game_m": 4.819096374493952,
+ "splat_a": "R dry grass, G red soil, B volcanic rock, A shore sand",
+ "splat_b": "R wet mud, G cobble bed, B cracked mud, A unused",
+ "veg": "R acacia woodland, G doum palm, B grass tufts, A reeds",
+ "credit": "Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved"
+}

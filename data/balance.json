@@ -584,7 +584,7 @@
       },
       "build_s": 120,
       "hp": 1800,
-      "pop": 5,
+      "pop": 10,
       "drop": [
         "food",
         "wood",

@@ -51,8 +51,11 @@ func is_visible_cell(cell: int) -> bool:
 	return bytes[cell] == 255
 
 
-## Stamps sight around every player unit (team 0) and uploads the texture.
-func update(cells: PackedInt32Array, teams: PackedInt32Array, count: int) -> void:
+## Stamps sight around every player unit (team 0) and every cell in `extra` (player buildings),
+## then uploads the texture.
+func update(
+	cells: PackedInt32Array, teams: PackedInt32Array, count: int, extra := PackedInt32Array()
+) -> void:
 	var t0: int = Time.get_ticks_usec()
 	var n: int = SpikeConfig.NAV_CELLS
 	for c in _lit:
@@ -63,6 +66,10 @@ func update(cells: PackedInt32Array, teams: PackedInt32Array, count: int) -> voi
 		if teams[i] != 0:
 			continue
 		var c: int = cells[i]
+		if _src[c] == 0:
+			_src[c] = 1
+			_src_list.append(c)
+	for c in extra:
 		if _src[c] == 0:
 			_src[c] = 1
 			_src_list.append(c)

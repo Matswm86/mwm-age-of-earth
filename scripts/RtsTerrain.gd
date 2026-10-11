@@ -1,87 +1,104 @@
 class_name RtsTerrain
 extends Node3D
 
-## Placeholder map: 512 x 512 m of noise hills, two steep ridges (pathfinding obstacles) and a
-## lake basin on the west side, plus the 128 x 128 navigation grid (4 m cells).
-## Procedural on purpose: the real map (Copernicus GLO-30, West Turkana) comes later via the
-## Wayfarer DEM pipeline; noise needs no data licence or credit line.
+## The Rift Lake map (West Turkana, Copernicus GLO-30 at 1:10, DESIGN 7.2): 512 x 512 m, heights
+## from assets/terrain/game/height_f32.bin (vertical exaggeration x3 baked in, lake surface at y 0),
+## a 7-layer height-blended PBR ground (shaders/terrain.gdshader), the Lake Turkana water plane
+## (shaders/water.gdshader) and the 128 x 128 navigation grid (4 m cells, water and wet shore
+## blocked).
+## The ground mesh is one flat 64 x 64 m grid reused by 8 x 8 chunks; the vertex shader lifts it
+## from the height texture, so nothing heavy is built on the CPU (the intro builds this too).
+## ground_image (512 x 512, 1 m texels) holds runtime marks the shader reads: R contact
+## occlusion under trees, rocks and buildings (1 = open), G trampled camp floor.
 
-const GRASS := Color(0.55, 0.47, 0.26)
-const GREEN := Color(0.26, 0.36, 0.15)
-const SAND := Color(0.7, 0.62, 0.46)
-const MUD := Color(0.33, 0.31, 0.24)
-const ROCK := Color(0.47, 0.42, 0.38)
-## Terrain mesh split per side (8 x 8 chunks of 64 m).
+const DIR: String = "res://assets/terrain/game/"
+const SRC: String = "res://assets/terrain/rift_lake/"
 const CHUNKS: int = 8
+## Layer tiling in metres and albedo tints (DESIGN 7.2), splat order a.rgba then b.rgb.
+const TILE_M: Array[float] = [3.0, 2.5, 3.5, 3.0, 2.5, 1.8, 3.0]
+const TINTS: Array[Color] = [
+	Color(0.78, 0.70, 0.56),
+	Color(0.80, 0.70, 0.62),
+	Color(0.85, 0.82, 0.80),
+	Color(0.92, 0.88, 0.82),
+	Color(0.80, 0.78, 0.74),
+	Color(0.95, 0.92, 0.88),
+	Color(1.0, 0.95, 0.90),
+]
 
 var n_side: int = 0
+## Game heights (m) on the 0.5 m grid, row-major, row 0 = north (z = 0).
 var heights: PackedFloat32Array = PackedFloat32Array()
 ## 1 = blocked nav cell (water, wet shore or steep).
 var blocked: PackedByteArray = PackedByteArray()
 var terrain_mat: ShaderMaterial
 var water_mat: ShaderMaterial
+var ground_image: Image
+var ground_tex: ImageTexture
+var height_tex: ImageTexture
 
 
 func build(fog_tex: Texture2D) -> void:
-	n_side = int(SpikeConfig.MAP_SIZE / SpikeConfig.TERRAIN_STEP) + 1
-	_make_heights()
+	n_side = SpikeConfig.HEIGHT_SAMPLES
+	_load_heights()
 	_make_nav()
+	ground_image = Image.create(512, 512, false, Image.FORMAT_RG8)
+	ground_image.fill(Color(1.0, 0.0, 0.0))
+	ground_tex = ImageTexture.create_from_image(ground_image)
+	var macro := NoiseTexture2D.new()
+	macro.width = 256
+	macro.height = 256
+	macro.seamless = true
+	var fn := FastNoiseLite.new()
+	fn.frequency = 0.012
+	fn.fractal_octaves = 3
+	macro.noise = fn
 	terrain_mat = ShaderMaterial.new()
 	terrain_mat.shader = load("res://shaders/terrain.gdshader")
-	terrain_mat.set_shader_parameter("fog_tex", fog_tex)
-	terrain_mat.set_shader_parameter("map_size", SpikeConfig.MAP_SIZE)
+	var m: ShaderMaterial = terrain_mat
+	m.set_shader_parameter("fog_tex", fog_tex)
+	m.set_shader_parameter("map_size", SpikeConfig.MAP_SIZE)
+	m.set_shader_parameter("height_tex", height_tex)
+	m.set_shader_parameter("normal_tex", load(DIR + "normal.png"))
+	m.set_shader_parameter("sky_ao_tex", load(DIR + "sky_ao.png"))
+	m.set_shader_parameter("splat_a", load(SRC + "splat_a.png"))
+	m.set_shader_parameter("splat_b", load(SRC + "splat_b.png"))
+	m.set_shader_parameter("shore_tex", load(SRC + "shore.png"))
+	m.set_shader_parameter("ground_tex", ground_tex)
+	m.set_shader_parameter("macro_tex", macro)
+	m.set_shader_parameter("albedo_arr", load(DIR + "albedo_array.png"))
+	m.set_shader_parameter("normal_arr", load(DIR + "normal_array.png"))
+	m.set_shader_parameter("mat_arr", load(DIR + "mat_array.png"))
+	var tiles := PackedFloat32Array()
+	var tints := PackedVector3Array()
+	for k in 7:
+		tiles.append(1.0 / TILE_M[k])
+		tints.append(Vector3(TINTS[k].r, TINTS[k].g, TINTS[k].b))
+	m.set_shader_parameter("inv_tile", tiles)
+	m.set_shader_parameter("tints", tints)
 	_make_chunks()
-	water_mat = ShaderMaterial.new()
-	water_mat.shader = load("res://shaders/water.gdshader")
-	water_mat.set_shader_parameter("fog_tex", fog_tex)
-	water_mat.set_shader_parameter("map_size", SpikeConfig.MAP_SIZE)
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(SpikeConfig.MAP_SIZE, SpikeConfig.MAP_SIZE)
-	var water := MeshInstance3D.new()
-	water.name = "Lake"
-	water.mesh = plane
-	water.material_override = water_mat
-	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	water.position = Vector3(
-		SpikeConfig.MAP_SIZE * 0.5, SpikeConfig.WATER_LEVEL, SpikeConfig.MAP_SIZE * 0.5
+	_make_water(fog_tex)
+
+
+func _load_heights() -> void:
+	var f := FileAccess.open(DIR + "height_f32.bin", FileAccess.READ)
+	if f == null:
+		push_error("RtsTerrain: cannot open height_f32.bin (export include_filter?)")
+		heights.resize(n_side * n_side)
+		heights.fill(1.0)
+	else:
+		heights = f.get_buffer(n_side * n_side * 4).to_float32_array()
+	var img := Image.create_from_data(
+		n_side, n_side, false, Image.FORMAT_RF, heights.to_byte_array()
 	)
-	add_child(water)
-
-
-func _make_heights() -> void:
-	var hills := FastNoiseLite.new()
-	hills.seed = SpikeConfig.TERRAIN_SEED
-	hills.frequency = 0.006
-	hills.fractal_octaves = 4
-	var ridge := FastNoiseLite.new()
-	ridge.seed = SpikeConfig.TERRAIN_SEED + 1
-	ridge.frequency = 0.004
-	ridge.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	ridge.fractal_octaves = 2
-	var shore := FastNoiseLite.new()
-	shore.seed = SpikeConfig.TERRAIN_SEED + 2
-	shore.frequency = 0.012
-	heights.resize(n_side * n_side)
-	var step: float = SpikeConfig.TERRAIN_STEP
-	for j in n_side:
-		for i in n_side:
-			var x: float = i * step
-			var z: float = j * step
-			var h: float = 9.0 + 7.0 * hills.get_noise_2d(x, z)
-			var r: float = ridge.get_noise_2d(x, z)
-			h += 14.0 * clampf((r - 0.55) / 0.3, 0.0, 1.0)
-			var d: float = Vector2(x, z).distance_to(SpikeConfig.LAKE_CENTRE)
-			var rad: float = SpikeConfig.LAKE_RADIUS + 28.0 * shore.get_noise_2d(x, z)
-			var t: float = smoothstep(rad + 45.0, rad - 15.0, d)
-			h = lerpf(h, -5.0, t)
-			heights[j * n_side + i] = h
+	height_tex = ImageTexture.create_from_image(img)
 
 
 ## Bilinear terrain height at world x, z (clamped to the map).
 func height_at(x: float, z: float) -> float:
-	var step: float = SpikeConfig.TERRAIN_STEP
-	var fx: float = clampf(x / step, 0.0, n_side - 1.001)
-	var fz: float = clampf(z / step, 0.0, n_side - 1.001)
+	var inv: float = 1.0 / SpikeConfig.HEIGHT_SPACING
+	var fx: float = clampf(x * inv, 0.0, n_side - 1.001)
+	var fz: float = clampf(z * inv, 0.0, n_side - 1.001)
 	var i: int = int(fx)
 	var j: int = int(fz)
 	var tx: float = fx - i
@@ -90,6 +107,15 @@ func height_at(x: float, z: float) -> float:
 	var a: float = lerpf(heights[k], heights[k + 1], tx)
 	var b: float = lerpf(heights[k + n_side], heights[k + n_side + 1], tx)
 	return lerpf(a, b, tz)
+
+
+## Ground normal at x, z from the height samples 1 m apart.
+func normal_at(x: float, z: float) -> Vector3:
+	var hl: float = height_at(x - 1.0, z)
+	var hr: float = height_at(x + 1.0, z)
+	var hd: float = height_at(x, z - 1.0)
+	var hu: float = height_at(x, z + 1.0)
+	return Vector3(hl - hr, 2.0, hd - hu).normalized()
 
 
 func _make_nav() -> void:
@@ -183,81 +209,105 @@ func ray_hit(origin: Vector3, dir: Vector3) -> Vector3:
 	return Vector3.INF
 
 
-## Terrain as CHUNKS x CHUNKS meshes so the camera and the shadow pass cull what they do not
-## see. Chunks cast shadows: without that, unit shadows fall through ridges onto the ground
-## behind them (seen in the 2026-10-11 capture).
+# --- runtime ground marks (contact occlusion, trampled floors) ---
+
+
+## Darkens a soft disc of radius r (m) at x, z: `strength` 0..1 at the centre.
+func stamp_contact(x: float, z: float, r: float, strength: float) -> void:
+	_stamp(x, z, r, 0, strength, true)
+
+
+## Tramples a noisy disc of radius r (m) at x, z toward red earth (DESIGN 7.2 camp floors).
+func stamp_trample(x: float, z: float, r: float) -> void:
+	_stamp(x, z, r, 1, 1.0, false)
+
+
+func commit_ground() -> void:
+	ground_tex.update(ground_image)
+
+
+func _stamp(x: float, z: float, r: float, ch: int, strength: float, darken: bool) -> void:
+	var r_px: int = int(ceilf(r)) + 1
+	var cx: int = int(x)
+	var cz: int = int(z)
+	for j in range(maxi(cz - r_px, 0), mini(cz + r_px + 1, 512)):
+		for i in range(maxi(cx - r_px, 0), mini(cx + r_px + 1, 512)):
+			var d: float = Vector2(i + 0.5 - x, j + 0.5 - z).length() / r
+			if d >= 1.0:
+				continue
+			var wobble: float = 0.0 if darken else 0.18 * sin(float(i) * 1.7 + float(j) * 2.3)
+			var k: float = clampf((1.0 - d + wobble) * 1.6, 0.0, 1.0) * strength
+			var c: Color = ground_image.get_pixel(i, j)
+			if ch == 0:
+				c.r = minf(c.r, 1.0 - k)
+			else:
+				c.g = maxf(c.g, k)
+			ground_image.set_pixel(i, j, c)
+
+
+# --- meshes ---
+
+
+## 8 x 8 chunks of one shared flat 64 m grid (1 m quads); the shader adds the height.
 func _make_chunks() -> void:
-	var per: int = int((n_side - 1) / float(CHUNKS))
+	var size: float = SpikeConfig.MAP_SIZE / CHUNKS
+	var quads: int = int(size / SpikeConfig.TERRAIN_STEP)
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(size, size)
+	plane.subdivide_width = quads - 1
+	plane.subdivide_depth = quads - 1
+	plane.center_offset = Vector3(size * 0.5, 0.0, size * 0.5)
+	plane.custom_aabb = AABB(Vector3(0.0, -8.0, 0.0), Vector3(size, 24.0, size))
 	for cj in CHUNKS:
 		for ci in CHUNKS:
 			var mi := MeshInstance3D.new()
 			mi.name = "Chunk_%d_%d" % [ci, cj]
-			mi.mesh = _make_mesh(ci * per, cj * per, per + 1)
+			mi.mesh = plane
+			mi.position = Vector3(ci * size, 0.0, cj * size)
 			mi.material_override = terrain_mat
+			# no terrain shadow pass: the x3 relief is gentle (14 m over 512 m) and casting doubled the
+			# draw calls (64 chunks x 2 splits, ~40 draws and ~250k triangles measured 2026-10-11)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
 
 
-func _make_mesh(i0: int, j0: int, n: int) -> ArrayMesh:
-	var step: float = SpikeConfig.TERRAIN_STEP
-	var tint := FastNoiseLite.new()
-	tint.seed = SpikeConfig.TERRAIN_SEED + 3
-	tint.frequency = 0.02
-	var verts := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var colours := PackedColorArray()
-	verts.resize(n * n)
-	normals.resize(n * n)
-	colours.resize(n * n)
-	var ns: int = n_side
-	for lj in n:
-		for li in n:
-			var k: int = lj * n + li
-			var i: int = i0 + li
-			var j: int = j0 + lj
-			var h: float = heights[j * ns + i]
-			verts[k] = Vector3(i * step, h, j * step)
-			var hl: float = heights[j * ns + maxi(i - 1, 0)]
-			var hr: float = heights[j * ns + mini(i + 1, ns - 1)]
-			var hd: float = heights[maxi(j - 1, 0) * ns + i]
-			var hu: float = heights[mini(j + 1, ns - 1) * ns + i]
-			var nrm := Vector3(hl - hr, 2.0 * step, hd - hu).normalized()
-			normals[k] = nrm
-			colours[k] = _ground_colour(h, nrm.y, tint.get_noise_2d(i * step, j * step))
-	var idx := PackedInt32Array()
-	idx.resize((n - 1) * (n - 1) * 6)
-	var w: int = 0
-	for j in n - 1:
-		for i in n - 1:
-			var a: int = j * n + i
-			var b: int = a + 1
-			var c: int = a + n
-			var d: int = c + 1
-			idx[w] = a
-			idx[w + 1] = b
-			idx[w + 2] = c
-			idx[w + 3] = b
-			idx[w + 4] = d
-			idx[w + 5] = c
-			w += 6
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_COLOR] = colours
-	arrays[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
-
-
-func _ground_colour(h: float, up: float, n: float) -> Color:
-	# savanna mosaic: dry grass and greener patches from the tint noise
-	var col: Color = GRASS.lerp(GREEN, clampf(0.5 + 1.4 * n, 0.0, 1.0) * 0.75)
-	# greener, wetter ground close to the lake
-	col = col.lerp(GREEN, clampf(1.0 - (h - 1.0) / 4.0, 0.0, 1.0) * 0.7)
-	if h < 1.2:
-		col = col.lerp(SAND, clampf((1.2 - h) / 0.8, 0.0, 1.0))
-	if h < SpikeConfig.WATER_LEVEL:
-		col = SAND.lerp(MUD, clampf(-h / 2.0, 0.0, 1.0))
-	col = col.lerp(ROCK, clampf((0.86 - up) / 0.12, 0.0, 1.0))
-	return col
+func _make_water(fog_tex: Texture2D) -> void:
+	water_mat = ShaderMaterial.new()
+	water_mat.shader = load("res://shaders/water.gdshader")
+	water_mat.set_shader_parameter("fog_tex", fog_tex)
+	water_mat.set_shader_parameter("map_size", SpikeConfig.MAP_SIZE)
+	water_mat.set_shader_parameter("depth_tex", load(SRC + "water.png"))
+	water_mat.set_shader_parameter("shore_tex", load(SRC + "shore.png"))
+	for k in 2:
+		var nt := NoiseTexture2D.new()
+		nt.width = 512
+		nt.height = 512
+		nt.seamless = true
+		nt.as_normal_map = true
+		nt.bump_strength = 6.0 if k == 0 else 4.0
+		var fn := FastNoiseLite.new()
+		fn.seed = 11 + k
+		fn.frequency = 0.02 if k == 0 else 0.035
+		fn.fractal_octaves = 4
+		nt.noise = fn
+		water_mat.set_shader_parameter("wave_a" if k == 0 else "wave_b", nt)
+	var foam := NoiseTexture2D.new()
+	foam.width = 256
+	foam.height = 256
+	foam.seamless = true
+	var ffn := FastNoiseLite.new()
+	ffn.frequency = 0.05
+	ffn.fractal_octaves = 3
+	foam.noise = ffn
+	water_mat.set_shader_parameter("foam_noise", foam)
+	# the lake covers the east of the map (water.png: x >= 339.5 m) and runs on past the map edge
+	# to the horizon (Lake Turkana is 30 km wide), so no map edge shows from the intro or far zoom
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(1400.0, 2200.0)
+	var water := MeshInstance3D.new()
+	water.name = "Lake"
+	water.mesh = plane
+	water.material_override = water_mat
+	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water.position = Vector3(330.0 + 700.0, SpikeConfig.WATER_LEVEL, SpikeConfig.MAP_SIZE * 0.5)
+	add_child(water)

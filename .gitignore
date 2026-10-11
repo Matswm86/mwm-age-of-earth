@@ -38,3 +38,18 @@ screenshots/raw/
 .idea/
 *.swp
 docs/mockups/src/__pycache__/
+
+# Raw asset downloads and Blender build files (2 GB, several files > 50 MB). Sources and licences stay tracked.
+assets/_raw/**
+!assets/_raw/**/
+!assets/_raw/**/SOURCE.md
+!assets/_raw/sketchfab/**/*.json
+!assets/_raw/.gdignore
+
+# Opening intro textures: VRAM compression, mipmaps and lossless data maps must reach CI
+!assets/intro/*.import
+
+# Game terrain and VAT bodies: Texture2DArray slices, lossless height, uncompressed VAT meshes
+# (UV2 holds vertex ids) must reach CI
+!assets/terrain/game/*.import
+!assets/vat/*.glb.import
